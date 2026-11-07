@@ -1,0 +1,76 @@
+name: Добавить игрока
+
+# Заявка с сайта: issue с заголовком «Отслеживать игрока #ТЕГ».
+# Тег проверяется через API и дописывается в players.txt, затем запускается короткий сбор,
+# чтобы игрок появился на сайте через несколько минут, а не после планового сбора.
+on:
+  issues:
+    types: [opened, reopened]
+
+permissions:
+  contents: write   # дописать тег в players.txt
+  issues: write     # ответить в заявке и закрыть её
+  actions: write    # запустить сбор статистики
+
+concurrency:
+  group: add-player
+  cancel-in-progress: false
+
+jobs:
+  add:
+    if: startsWith(github.event.issue.title, 'Отслеживать игрока')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+
+      - name: Проверить тег
+        id: check
+        env:
+          BS_API_KEY: ${{ secrets.BS_API_KEY }}
+          # текст заявки пишет кто угодно — передаём только через переменные окружения
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: python3 scripts/add_player.py >> "$GITHUB_OUTPUT"
+
+      - name: Сохранить players.txt
+        if: steps.check.outputs.result == 'added'
+        env:
+          TAG: ${{ steps.check.outputs.tag }}
+        run: |
+          git add players.txt
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -q -m "Отслеживать игрока #$TAG (заявка с сайта)"
+          for i in 1 2 3; do
+            git pull -q --rebase origin main && git push -q origin HEAD:main && break
+            sleep 5
+          done
+
+      - name: Запустить сбор
+        if: steps.check.outputs.result == 'added'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run update-stats.yml --ref main -f players=30
+
+      - name: Ответить в заявке
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUM: ${{ github.event.issue.number }}
+          RESULT: ${{ steps.check.outputs.result }}
+          TAG: ${{ steps.check.outputs.tag }}
+          NAME: ${{ steps.check.outputs.name }}
+        run: |
+          case "$RESULT" in
+            added)       msg="Готово: игрок \`$NAME\` (#$TAG) добавлен в отслеживание. Сбор уже запущен — через 5–10 минут откройте «Разбор игрока» на сайте и введите тег." ;;
+            already)     msg="Игрок #$TAG уже отслеживается — данные есть на сайте в «Разборе игрока»." ;;
+            notfound)    msg="Игрок #$TAG не найден. Проверьте тег в профиле игры и отправьте заявку заново." ;;
+            invalid)     msg="Не нашёл тег в заявке. Заголовок должен быть вида «Отслеживать игрока #ТЕГ»." ;;
+            full)        msg="Список отслеживания заполнен (не больше 300 игроков). Напишите владельцу сайта." ;;
+            maintenance) msg="API Brawl Stars сейчас на техобслуживании. Переоткройте заявку позже (Reopen) — проверка запустится снова." ;;
+            *)           msg="Не удалось обработать заявку. Попробуйте позже." ;;
+          esac
+          gh issue comment "$NUM" --body "$msg"
+          if [ "$RESULT" != "maintenance" ]; then gh issue close "$NUM"; fi

@@ -1,0 +1,67 @@
+name: Обновление статистики
+
+on:
+  schedule:
+    - cron: "17 */6 * * *" # 4 раза в сутки: 03:17, 09:17, 15:17, 21:17 по Москве
+  workflow_dispatch:        # и вручную: Actions → «Обновление статистики» → Run workflow
+    inputs:
+      players:
+        description: "Сколько игроков опросить (0 — всех)"
+        required: false
+        default: "0"
+      debug_tag:
+        description: "Только проверить номера рангов в матчах одного игрока (тег), без сбора"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-stats${{ github.event.inputs.debug_tag && '-debug' || '' }}  # проверка игрока не ждёт большой сбор
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Взять прошлые данные из ветки data
+        run: |
+          set -o pipefail
+          mkdir -p stats
+          # Код 2 — ветки data ещё нет (первый запуск). Любая другая ошибка — прерываемся,
+          # иначе сбор начнётся с пустого состояния и force-push сотрёт накопленные истории игроков.
+          rc=0; git ls-remote --exit-code --heads origin data >/dev/null || rc=$?
+          if [ "$rc" -eq 0 ]; then
+            git fetch --depth 1 origin data
+            git archive FETCH_HEAD | tar -x -C stats
+          elif [ "$rc" -ne 2 ]; then
+            echo "::error::Не удалось проверить ветку data (код $rc) — прерываю, чтобы не затереть данные."
+            exit 1
+          fi
+
+      - name: Собрать статистику ранкеда
+        env:
+          BS_API_KEY: ${{ secrets.BS_API_KEY }}
+          BS_MAX_PLAYERS: ${{ github.event.inputs.players || '0' }}
+          BS_DEBUG_TAG: ${{ github.event.inputs.debug_tag || '' }}
+        run: python3 -u scripts/update_stats.py --state stats  # -u: журнал виден по ходу сбора
+
+      - name: Сохранить в ветку data
+        if: ${{ !github.event.inputs.debug_tag }}
+        run: |
+          if [ -z "$(ls -A stats)" ]; then echo "Данных пока нет — публиковать нечего."; exit 0; fi
+          # Коммит собираем в основном репозитории: прошлая ветка data в нём уже скачана (шаг выше),
+          # поэтому push отправит только изменившиеся файлы, а не всю ветку. Коммит без родителя —
+          # в ветке data всегда один коммит, история не копится.
+          export GIT_INDEX_FILE="$RUNNER_TEMP/data-index"
+          rm -f "$GIT_INDEX_FILE"
+          git --work-tree=stats add -A
+          tree=$(git write-tree)
+          unset GIT_INDEX_FILE
+          commit=$(git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit-tree "$tree" -m "Статистика ранкеда на $(date -u +%F)")
+          git push -q -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" "$commit:refs/heads/data"

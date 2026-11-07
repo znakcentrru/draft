@@ -1,0 +1,1359 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>Драфт-подсказчик БС</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Russo+One&family=Rubik:wght@400;500;700&display=swap">
+<style>
+/* Layout: one narrow column — режим → состав команд → рекомендации → база. Синие = мы, красные = враги, жёлтый = совет. */
+:root{
+  --bg:#E9EEF6; --panel:#FFFFFF; --ink:#16203A; --muted:#5C6A86; --line:#D3DBE8;
+  --ally:#2562F0; --ally-soft:#DCE6FE; --enemy:#D93A45; --enemy-soft:#FBE0E2;
+  --tip:#F0B000; --tip-soft:#FFF3C9; --ban:#59627A;
+  --cT:#B5651D; --cD:#D93A45; --cM:#2E8B57; --cA:#8A5CF6; --cC:#0E8FA8; --cS:#C02B8A; --cP:#3A7D1E;
+  --display:"Russo One","Arial Black",system-ui,sans-serif;
+  --body:"Rubik",system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0F1522; --panel:#18213A; --ink:#E8EDF7; --muted:#97A3BD; --line:#2A3657;
+  --ally:#5B8CFF; --ally-soft:#1C2C55; --enemy:#FF6B74; --enemy-soft:#43202A;
+  --tip:#FFC933; --tip-soft:#3A3115; --ban:#8C96AE;
+  --cT:#E08A3E; --cD:#FF6B74; --cM:#4FC285; --cA:#A88BFF; --cC:#3CC3DC; --cS:#F062B8; --cP:#79C255;
+  color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0F1522; --panel:#18213A; --ink:#E8EDF7; --muted:#97A3BD; --line:#2A3657;
+  --ally:#5B8CFF; --ally-soft:#1C2C55; --enemy:#FF6B74; --enemy-soft:#43202A;
+  --tip:#FFC933; --tip-soft:#3A3115; --ban:#8C96AE;
+  --cT:#E08A3E; --cD:#FF6B74; --cM:#4FC285; --cA:#A88BFF; --cC:#3CC3DC; --cS:#F062B8; --cP:#79C255;
+  color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.45;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:16px 40px}
+.wrap{max-width:640px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+.cols{display:flex;flex-direction:column;gap:18px}
+h1{font-family:var(--display);font-weight:400;font-size:26px;margin:0;letter-spacing:.3px;text-wrap:balance}
+h2{font-family:var(--display);font-weight:400;font-size:17px;margin:0 0 10px;text-wrap:balance}
+.sub{color:var(--muted);margin:4px 0 0;font-size:14px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{font:inherit;font-size:14px;border:1.5px solid var(--line);background:transparent;color:var(--ink);border-radius:999px;padding:7px 12px;cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--panel);border-color:var(--ink)}
+.chip:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible{outline:3px solid var(--tip);outline-offset:2px}
+.row{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.teams{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.team h3{margin:0 0 8px;font-size:13px;text-transform:uppercase;letter-spacing:.08em;font-weight:700}
+.team.ally h3{color:var(--ally)} .team.enemy h3{color:var(--enemy)}
+.slots{display:flex;flex-direction:column;gap:6px}
+.slot{display:flex;align-items:center;gap:8px;min-height:44px;border-radius:10px;padding:6px 8px 6px 10px;border:1.5px dashed var(--line);background:transparent;color:var(--muted);font:inherit;cursor:pointer;text-align:left;width:100%}
+.slot.filled{border-style:solid;color:var(--ink)}
+.ally .slot.filled{background:var(--ally-soft);border-color:var(--ally)}
+.enemy .slot.filled{background:var(--enemy-soft);border-color:var(--enemy)}
+.slot.next{border-color:var(--tip);border-style:solid;box-shadow:0 0 0 2px var(--tip-soft)}
+.slot .nm{flex:1;min-width:0;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.slot .x{border:0;background:transparent;color:var(--muted);font-size:18px;line-height:1;padding:4px 6px;cursor:pointer;border-radius:6px}
+.dot{width:10px;height:10px;border-radius:50%;flex:none;background:var(--muted)}
+.bans{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:8px}
+.bans .slot{min-height:38px;font-size:13px}
+.bans .slot.filled{background:transparent;border-color:var(--ban);text-decoration:line-through;color:var(--ban)}
+.turn{font-size:14px;padding:8px 12px;border-radius:10px;background:var(--tip-soft);color:var(--ink)}
+.turn b{font-weight:700}
+.recs{display:flex;flex-direction:column;gap:8px}
+.recw{display:flex;gap:6px;align-items:stretch}
+.recw .rec{flex:1;min-width:0}
+.info{flex:none;width:40px;border:1px solid var(--line);border-radius:12px;background:transparent;color:var(--muted);font:400 16px var(--display);cursor:pointer}
+.info:hover{border-color:var(--tip);color:var(--ink)}
+.flag{display:inline-block;font-size:11px;line-height:1;padding:3px 6px;border-radius:999px;background:var(--tip-soft);color:var(--ink);vertical-align:1px;white-space:nowrap}
+.flag.bad{background:var(--enemy-soft)} .flag.good{background:var(--ally-soft)}
+.anoms{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px}
+.anom{display:flex;flex-direction:column;gap:6px;border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.anom:hover{border-color:var(--tip)}
+.anom .top{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.anom .nm{font-weight:700}
+.anom .ln{font-size:13px;color:var(--muted)}
+.syns{display:flex;flex-direction:column;gap:6px}
+.syn{display:grid;grid-template-columns:1fr auto;gap:2px 10px;align-items:center;border:1px solid var(--line);border-radius:12px;padding:8px 12px}
+.syn .who{display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px;font-weight:600}
+.syn .who button{font:inherit;border:0;background:transparent;color:inherit;padding:2px 0;cursor:pointer;display:inline-flex;align-items:center;gap:5px}
+.syn .who button:hover{text-decoration:underline}
+.syn .plus-sign{color:var(--muted);font-weight:400}
+.syn .sc{font-family:var(--display);font-variant-numeric:tabular-nums;background:var(--tip-soft);border-radius:8px;padding:2px 8px}
+.syn .ln{grid-column:1 / 3;font-size:13px;color:var(--muted)}
+.pl-form{display:flex;gap:8px;flex-wrap:wrap}
+.pl-form input{font:inherit;font-size:16px;flex:1;min-width:180px;padding:10px 12px;border-radius:10px;border:1.5px solid var(--line);background:var(--bg);color:var(--ink);text-transform:uppercase}
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px}
+.tile{border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.tile .v{font-family:var(--display);font-size:22px;font-variant-numeric:tabular-nums}
+.tile .k{font-size:12px;color:var(--muted)}
+.pl-grid{display:grid;grid-template-columns:1fr;gap:14px}
+.pl-grid h3{margin:0 0 6px;font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.tbl{width:100%;border-collapse:collapse;font-size:14px}
+.tbl td,.tbl th{padding:5px 6px;border-bottom:1px solid var(--line);text-align:left;font-variant-numeric:tabular-nums}
+.tbl th{font-size:12px;color:var(--muted);font-weight:500}
+.tbl td.n{text-align:right}
+.up{color:var(--cM)} .down{color:var(--enemy)}
+.match{border:1px solid var(--line);border-radius:12px;padding:8px 12px;display:flex;flex-direction:column;gap:3px;font-size:14px}
+.match.win{border-left:4px solid var(--cM)} .match.loss{border-left:4px solid var(--enemy)}
+.match .meta{font-size:12px;color:var(--muted)}
+.match .verdict{font-size:13px}
+.card-in{max-width:720px}
+.card-body{overflow:auto;display:flex;flex-direction:column;gap:12px;padding-bottom:4px}
+.card-body h3{margin:0 0 6px;font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.card-body ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:3px;font-size:14px}
+.card-body .num{font-variant-numeric:tabular-nums;color:var(--muted)}
+.card-body .two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.fl{border-left:3px solid var(--tip);padding:4px 0 4px 10px;font-size:14px}
+.fl b{display:block}
+@media (max-width:520px){.card-body .two{grid-template-columns:1fr}}
+.rec{display:grid;grid-template-columns:auto 1fr auto;gap:4px 10px;align-items:center;border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:transparent;font:inherit;color:inherit;text-align:left;cursor:pointer;width:100%}
+.rec:hover{border-color:var(--tip)}
+.rec .nm{font-weight:700;font-size:16px}
+.rec .sc{font-family:var(--display);font-size:16px;font-variant-numeric:tabular-nums;color:var(--ink);background:var(--tip-soft);border-radius:8px;padding:2px 8px}
+.rec .why{grid-column:2 / 4;font-size:13px;color:var(--muted);min-width:0}
+.why .plus{color:var(--cM)} .why .minus{color:var(--enemy)}
+.cls{font-size:12px;color:var(--muted)}
+.tier{display:inline-block;font-family:var(--display);font-size:11px;line-height:1;padding:3px 5px;border-radius:5px;border:1px solid var(--line);color:var(--muted);vertical-align:2px}
+.tier.S{background:var(--tip);border-color:var(--tip);color:#1A1400}
+.tier.A{border-color:var(--tip);color:var(--ink)}
+a{color:var(--ally)}
+.tabs{display:flex;gap:6px;margin-bottom:10px}
+.small{font-size:13px;color:var(--muted)}
+.btn{font:inherit;font-size:14px;border-radius:10px;padding:8px 14px;border:1.5px solid var(--line);background:transparent;color:var(--ink);cursor:pointer}
+.btn.primary{background:var(--ink);color:var(--panel);border-color:var(--ink)}
+textarea{width:100%;min-height:220px;font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;border:1px solid var(--line);border-radius:10px;padding:10px;background:var(--bg);color:var(--ink);resize:vertical}
+details summary{cursor:pointer;font-family:var(--display);font-size:16px}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:13px;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+/* picker sheet */
+.sheet{position:fixed;inset:0;background:rgba(10,14,25,.55);display:flex;align-items:flex-end;justify-content:center;z-index:20}
+.sheet-in{background:var(--panel);width:100%;max-width:640px;max-height:82%;border-radius:18px 18px 0 0;display:flex;flex-direction:column;
+  padding:14px max(16px,env(safe-area-inset-right,0px)) calc(14px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+.sheet-in input{font:inherit;font-size:16px;width:100%;padding:10px 12px;border-radius:10px;border:1.5px solid var(--line);background:var(--bg);color:var(--ink);margin:10px 0}
+.grid{overflow:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(108px,1fr));gap:8px;padding-bottom:4px}
+.pick{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:12px;padding:12px 10px;min-height:52px;font-size:15px!important;font-weight:500;background:transparent;color:var(--ink);font:inherit;font-size:14px;cursor:pointer;text-align:left}
+.pick[disabled]{opacity:.35;cursor:not-allowed}
+.pick .nm{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.quick{margin-top:12px;display:flex;flex-direction:column;gap:8px}
+.quick input{font:inherit;font-size:17px;width:100%;padding:12px 14px;border-radius:12px;border:2px solid var(--tip);background:var(--bg);color:var(--ink)}
+.qt{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.qt .chip{padding:5px 10px;font-size:13px}
+.qres{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.qres .pick{justify-content:center}
+.qres .pick.sel{border-color:var(--tip);box-shadow:0 0 0 2px var(--tip-soft)}
+.hk{display:none;font:600 11px/1 var(--body);color:var(--muted);border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:3px 5px;background:var(--bg)}
+.rh{display:none;margin:0 0 10px}
+.p-recs[data-tab="pick"] .rb,.p-recs[data-tab="ban"] .rp{display:none}
+@media (max-width:1099px){.desk{display:none!important}}
+.order{display:flex;gap:4px;margin-top:10px}
+.order span{flex:1;text-align:center;font-size:12px;font-weight:700;padding:5px 0;border-radius:7px;border:1.5px solid var(--line);color:var(--muted)}
+.order .oa{border-color:var(--ally);color:var(--ally)} .order .oe{border-color:var(--enemy);color:var(--enemy)}
+.order .done.oa{background:var(--ally);color:#fff} .order .done.oe{background:var(--enemy);color:#fff}
+.order .now{box-shadow:0 0 0 3px var(--tip)}
+.keys{display:grid;grid-template-columns:auto 1fr;gap:6px 12px;font-size:13px;color:var(--muted);margin:0}
+.keys kbd{font:600 12px/1 var(--body);color:var(--ink);border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:3px 6px;background:var(--bg);white-space:nowrap;justify-self:start}
+/* ПК: три колонки — режим и карта | состав | советы */
+@media (min-width:1100px){
+  body{font-size:15px;padding-block:24px 48px}
+  .wrap{max-width:1360px;display:grid;grid-template-columns:minmax(0,1fr) 410px;gap:20px;align-items:start;
+    grid-template-areas:"head head" "cols cols" "player player" "db maps" "src src"}
+  .p-player{grid-area:player}
+  .pl-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important}
+  /* три колонки — в своём блоке, чтобы «прилипающие» панели не наезжали на разделы ниже */
+  .cols{grid-area:cols;display:grid;grid-template-columns:290px minmax(0,1fr) 410px;gap:20px;align-items:start;
+    grid-template-areas:"mode team recs" "mode syn recs" "mode anom recs"}
+  .p-syn{grid-area:syn}
+  .p-anom{grid-area:anom}
+  header{grid-area:head} .p-mode{grid-area:mode} .p-team{grid-area:team} .p-recs{grid-area:recs} .p-db{grid-area:db} .p-maps{grid-area:maps} .p-src{grid-area:src}
+  h1{font-size:30px}
+  .panel{padding:18px}
+  .p-mode,.p-recs{position:sticky;top:16px}
+  .p-recs{max-height:calc(100vh - 32px);overflow:auto}
+  .p-recs .tabs{display:none}
+  .p-recs .rb,.p-recs .rp{display:flex!important}
+  .rh{display:block} .rb{margin-top:18px}
+  .desk{display:block}
+  .order.desk{display:flex}
+  .hk{display:inline-block}
+  .rec{grid-template-columns:auto 1fr auto auto}
+  .rec .why{grid-column:2 / 5}
+  .teams{gap:16px}
+  .slot{min-height:52px;font-size:16px}
+  .bans .slot{min-height:44px;font-size:14px}
+  .qres{grid-template-columns:repeat(6,1fr)}
+  .p-db textarea,.p-maps textarea{min-height:340px}
+  .sheet{align-items:center}
+  .sheet-in{max-width:860px;max-height:80vh;border-radius:18px}
+  .grid{grid-template-columns:repeat(auto-fill,minmax(130px,1fr))}
+}
+@media (min-width:1100px) and (hover:hover){.rec:hover,.pick:not([disabled]):hover,.slot:hover{border-color:var(--tip)}}
+@media (max-width:420px){.teams{grid-template-columns:1fr}}
+@media (prefers-reduced-motion:no-preference){.sheet-in{animation:up .18s ease-out}@keyframes up{from{transform:translateY(30px);opacity:.6}}}
+</style>
+<style>[hidden]{display:none!important} body{margin:0} img{max-width:100%}</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Драфт-подсказчик</h1>
+    <p class="sub">Ранкед Brawl Stars. Выберите режим и карту, внесите баны и пики — ниже появятся советы, кого брать и кого банить. Советы строятся по свежей статистике ранкеда уровня Легенда+ (обновляется 4 раза в сутки) и встроенной базе на 3 ноября 2026.</p>
+    <p class="small" id="statsLine" style="margin:6px 0 0" role="status"></p>
+    <div class="row pip-row" style="justify-content:flex-start;margin-top:10px" hidden id="pipRow">
+      <button class="btn" id="pipBtn" title="Драфт откроется в маленьком окне, которое не пропадает, когда вы нажимаете в игре">Поверх игры</button>
+      <span class="small" id="pipHint"></span>
+    </div>
+    <div class="turn" id="pipNote" style="margin-top:10px" hidden>Драфт открыт в окне поверх игры. <button class="btn" id="pipBack" style="padding:3px 10px;font-size:13px">Вернуть на страницу</button></div>
+  </header>
+
+  <div class="cols">
+  <section class="panel p-mode" id="modePanel">
+    <h2>Режим</h2>
+    <div class="chips" id="modes"></div>
+    <h2 style="margin:16px 0 10px">Карта</h2>
+    <div class="chips" id="maps"></div>
+    <p class="small" id="mapInfo" style="margin:10px 0 0"></p>
+  </section>
+
+  <section class="panel p-team" id="teamPanel">
+    <div class="row" style="margin-bottom:10px">
+      <h2 style="margin:0">Состав</h2>
+      <div class="chips">
+        <button class="chip" id="firstBtn" aria-pressed="true">Мы пикаем первыми</button>
+        <button class="btn" id="undoBtn" title="Ctrl+Z">Отменить</button>
+        <button class="btn" id="resetBtn">Сбросить</button>
+      </div>
+    </div>
+    <div class="turn" id="turn"></div>
+    <div class="order desk" id="order" aria-hidden="true"></div>
+    <div class="quick">
+      <input id="quick" type="search" placeholder="Быстрый ввод: первые буквы имени" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="done" aria-label="Быстрый ввод бравлера">
+      <div class="qt"><span class="small">Куда:</span><span id="qtChips" class="chips"></span><span class="small" id="qtInfo"></span></div>
+      <div class="qres" id="quickRes"></div>
+    </div>
+    <div class="teams" style="margin-top:12px">
+      <div class="team ally"><h3>Мы</h3><div class="slots" id="allySlots"></div></div>
+      <div class="team enemy"><h3>Враги</h3><div class="slots" id="enemySlots"></div></div>
+    </div>
+    <h3 style="margin:14px 0 0;font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)">Баны</h3>
+    <div class="bans" id="banSlots"></div>
+    <div class="desk" style="margin-top:16px;border-top:1px solid var(--line);padding-top:14px">
+      <h3 style="margin:0 0 10px;font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)">Клавиатура</h3>
+      <div class="keys">
+        <kbd>А…Я</kbd><span>просто начните печатать в любом месте — буквы попадут в быстрый ввод</span>
+        <kbd>← → ↑ ↓</kbd><span>выбрать плитку в результатах</span>
+        <kbd>Enter</kbd><span>поставить выбранного бравлера</span>
+        <kbd>Esc</kbd><span>очистить поле или закрыть окно</span>
+        <kbd>Alt + 1…8</kbd><span>взять совет из «Кого брать»</span>
+        <kbd>Alt + Shift + 1…8</kbd><span>забанить совет из «Кого банить»</span>
+        <kbd>Ctrl + Z</kbd><span>отменить последнее действие</span>
+        <kbd>F2</kbd><span>куда ставить: Авто → Бан → Мы → Враги</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel p-recs" id="recPanel" data-tab="pick">
+    <div class="tabs chips">
+      <button class="chip" id="tabPick" aria-pressed="true">Кого брать</button>
+      <button class="chip" id="tabBan" aria-pressed="false">Кого банить</button>
+    </div>
+    <div class="recs rp"><h2 class="rh">Кого брать</h2><div class="recs" id="recs"></div></div>
+    <div class="recs rb"><h2 class="rh">Кого банить</h2><div class="recs" id="recsBan"></div></div>
+    <p class="small" style="margin:10px 0 0">Нажмите на совет, чтобы поставить бравлера в следующий слот, или на «i», чтобы открыть разбор бойца.</p>
+  </section>
+
+  <section class="panel p-syn" id="synPanel" hidden>
+    <details id="synBox">
+      <summary>Сильные связки <span class="small" id="synCount" style="font-family:var(--body)"></span></summary>
+    <p class="small" style="margin:10px 0 10px">Пары и тройки бойцов в одной команде, которые на Легенде+ выигрывают чаще, чем ожидалось бы по силе каждого из них. Нажмите на бойца — откроется его разбор.</p>
+    <div class="chips" id="synTabs" style="margin-bottom:10px"></div>
+    <div class="syns" id="synList"></div>
+    </details>
+  </section>
+
+  <section class="panel p-anom" id="anomPanel" hidden>
+    <details id="anomBox">
+      <summary>Аномальные бойцы <span class="small" id="anomCount" style="font-family:var(--body)"></span></summary>
+    <p class="small" style="margin:10px 0 10px">Бойцы, чья статистика на Легенде+ выбивается из общей картины. Нажмите на бойца — откроется разбор: кого он бьёт, кого боится, где силён и когда его брать.</p>
+    <div class="chips" id="anomFilters" style="margin-bottom:10px"></div>
+    <div class="anoms" id="anomList"></div>
+    </details>
+  </section>
+  </div>
+
+  <section class="panel p-player" id="playerPanel">
+    <details id="playerBox">
+      <summary>Разбор игрока</summary>
+    <p class="small" style="margin:10px 0 10px">Введите тег из профиля в игре. Покажу все ваши бои 3 на 3 в основных режимах — ранкед и обычные: лучших и худших бойцов, против кого тяжелее, как менялся ранг и насколько каждый ваш пик был хорош против вражеского состава.</p>
+    <form class="pl-form" id="plForm" autocomplete="off">
+      <input id="plTag" placeholder="#CU000VU2" aria-label="Тег игрока" spellcheck="false" autocapitalize="characters" enterkeyhint="search">
+      <button class="btn primary" type="submit">Показать</button>
+    </form>
+    <div id="plOut" style="margin-top:12px"></div>
+    </details>
+  </section>
+
+  <section class="panel p-db">
+    <details id="dbBox">
+      <summary>База бравлеров</summary>
+      <p class="small">Одна строка — один бравлер: <b>Имя / английское имя | класс | тир | режимы | кто его контрит</b>. Классы: Т танк, Д урон, М снайпер, А метатель, К контроль, У убийца, П поддержка. Тир: S, A, B, C, D. Режимы: G захват кристаллов, B броулбол, H ограбление, Y награда за поимку, K нокаут, Z горячая зона. Контрпики — имена через запятую, как в игре (английские тоже понимаются). Английское имя после косой черты нужно для поиска и совпадения с сайтами статистики. После правок нажмите «Сохранить» — база запомнится в этом браузере.</p>
+      <div class="legend" id="legend" style="margin:8px 0 10px"></div>
+      <textarea id="dbText" spellcheck="false"></textarea>
+      <div class="row" style="margin-top:8px;justify-content:flex-start">
+        <button class="btn primary" id="saveDb">Сохранить</button>
+        <button class="btn" id="restoreDb">Вернуть стандартную</button>
+        <span class="small" id="dbMsg" role="status"></span>
+      </div>
+    </details>
+  </section>
+
+  <section class="panel p-maps">
+    <details id="mapsBox">
+      <summary>База карт</summary>
+      <p class="small">Одна строка — одна карта: <b>Название / английское название | режим | особенности | кто силён</b>. Режим — одна буква, как в базе бравлеров. Особенности через запятую: <b>открытая</b> (выгодно снайперам), <b>стены</b> (метателям), <b>кусты</b> (убийцам и танкам), <b>тесная</b> (ближнему бою). Кто силён — имена бравлеров через запятую, можно оставить пустым. Строки с # — комментарии. Карты ранкеда меняются каждый сезон: если в игре другие, поправьте список и нажмите «Сохранить».</p>
+      <textarea id="mapText" spellcheck="false"></textarea>
+      <div class="row" style="margin-top:8px;justify-content:flex-start">
+        <button class="btn primary" id="saveMaps">Сохранить</button>
+        <button class="btn" id="restoreMaps">Вернуть стандартную</button>
+        <span class="small" id="mapMsg" role="status"></span>
+      </div>
+    </details>
+  </section>
+
+  <section class="panel p-src">
+    <details id="srcBox">
+      <summary>Откуда данные</summary>
+      <div class="small" style="display:flex;flex-direction:column;gap:8px;margin-top:8px">
+        <p style="margin:0"><b>Автообновление.</b> Четыре раза в сутки GitHub Actions забирает через официальный API Brawl Stars истории матчей топ-игроков из 16 стран, а затем их соперников и союзников по ранкеду, оставляет только матчи ранкеда уровня Легенда и выше (средний ранг шести игроков не ниже Легенды I) за последние 7 дней (старые дни выпадают сами) и пересчитывает тиры, силу в режимах, контрпики, текущий пул карт и лучших бравлеров на каждой карте. Свежие данные смешиваются со встроенными: чем больше матчей у бравлера, тем сильнее его тир зависит от реального винрейта и популярности (на 150 матчах — примерно на четверть, но не больше чем на три четверти). Контрпики и сильные в режиме и на карте считаются по приросту: насколько бравлер выигрывает в этой ситуации чаще, чем обычно. Пул карт берётся из статистики сразу, а контрпики и сильные на карте — сначала из статистики, остальное из базы. Пока матчей меньше 300, статистика в советы не попадает. Особенности карт (открытая, стены…) по-прежнему берутся из «Базы карт». Строка под заголовком показывает, когда данные обновились; там же их можно выключить.</p>
+        <p style="margin:0"><b>Встроенная база</b> — запасной вариант, пока свежей статистики мало, и основа, с которой статистика смешивается. Тиры — пересечение нескольких списков на 3 ноября 2026: больший вес у статистики ранкеда (BrawlQR, Brawl Metrics через Timesaver), меньший — у трофейных матчей (Brawl Planet) и редакционных списков (Dexerto, голосование Brawl Time Ninja). Режимы — топы по режимам из BrawlQR, Brawl Planet и Trophy Coach. Контрпики — таблица Brawlio, дополненная гайдами Trophy Coach и советами Timesaver.</p>
+        <p style="margin:0"><b>Карты.</b> Пул карт ранкеда берётся из свежей статистики — карты, на которых играли за последнюю неделю, — так новый сезон подхватывается сам. Встроенный список (Timesaver, конец сентября 2026) — запасной. Особенности карт (открытая, стены, кусты, тесная) проставлены вручную в «Базе карт»; у новых карт их нет, советы по ним строятся только по статистике.</p>
+        <p style="margin:0"><b>Новые бравлеры</b> появляются сами, как только наберут достаточно матчей в ранкеде; русское имя берётся из русской вики Brawl Stars.</p>
+        <p style="margin:0">
+          <a href="https://brawlqr.com/pages/hub/brawl-stars-tier-list.html" target="_blank" rel="noopener">BrawlQR</a> ·
+          <a href="https://www.brawlplanet.com/tier-list" target="_blank" rel="noopener">Brawl Planet</a> ·
+          <a href="https://brawlmetrics.gg/tier-list" target="_blank" rel="noopener">Brawl Metrics</a> ·
+          <a href="https://timesaver.gg/blog/brawl-stars-best-brawlers-ranked-october-2026" target="_blank" rel="noopener">Timesaver</a> ·
+          <a href="https://www.dexerto.com/guides/brawl-stars-tier-list-best-brawlers-ranked-1935514/" target="_blank" rel="noopener">Dexerto</a> ·
+          <a href="https://brawlio.app/counters" target="_blank" rel="noopener">Brawlio</a> ·
+          <a href="https://trophycoach.com/brawl-stars/guides/best-brawlers-by-mode" target="_blank" rel="noopener">Trophy Coach</a> ·
+          <a href="https://www.pockettactics.com/brawl-stars/brawlers" target="_blank" rel="noopener">Pocket Tactics (классы)</a>
+        </p>
+      </div>
+    </details>
+  </section>
+</div>
+
+<div class="sheet" id="card" hidden>
+  <div class="sheet-in card-in" role="dialog" aria-modal="true" aria-labelledby="cardTitle">
+    <div class="row"><h2 id="cardTitle" style="margin:0">Боец</h2><button class="btn" id="closeCard">Закрыть</button></div>
+    <div class="card-body" id="cardBody"></div>
+  </div>
+</div>
+
+<div class="sheet" id="sheet" hidden>
+  <div class="sheet-in" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+    <div class="row"><h2 id="sheetTitle" style="margin:0">Выбор</h2><button class="btn" id="closeSheet">Закрыть</button></div>
+    <input id="search" type="search" placeholder="Поиск по имени" autocomplete="off">
+    <div class="grid" id="grid"></div>
+  </div>
+</div>
+
+<script>
+// Окно «поверх игры» (Document Picture-in-Picture): часть страницы переезжает в отдельное окно, которое
+// остаётся поверх остальных. Поэтому к элементам обращаемся через $id, а к фокусу — через act():
+// они ищут и в основном окне, и в окне поверх игры.
+let PIP=null;
+const $id=id=>(PIP&&PIP.document.getElementById(id))||document.getElementById(id);
+const act=()=>PIP&&PIP.document.hasFocus()?PIP.document.activeElement:document.activeElement;
+const MODES={G:"Захват кристаллов",B:"Броулбол",H:"Ограбление",Y:"Награда за поимку",K:"Нокаут",Z:"Горячая зона"};
+const CLASSES={"Т":["Танк","--cT"],"Д":["Урон","--cD"],"М":["Снайпер","--cM"],"А":["Метатель","--cA"],"К":["Контроль","--cC"],"У":["Убийца","--cS"],"П":["Поддержка","--cP"]};
+const TIER_PTS={S:4,A:3,B:2,C:1,D:0};
+// Мета на 3 ноября 2026. Имя / английское имя | класс | тир | режимы | кто контрит
+const DEFAULT_DB=`8-Бит / 8-Bit | Д | C | H | Поко, Драко, Даг
+Алли / Alli | У | B | B | Дэррил, Ворон, Корделиус
+Амбер / Amber | К | S | GBYZ | Мелоди, Ворон, Корделиус
+Анджело / Angelo | М | C | K | Чарли, Кит, Барли
+Эш / Ash | Т | S | BKZ | Нани, Мэйси, Венди
+Барли / Barley | А | D | Z | Корделиус, Шейд, Лили
+Беа / Bea | М | C | Y | Барли, Спраут, Венди
+Белль / Belle | М | C | KY | Лу, Поко, Скуик
+Берри / Berry | П | D | Z | Болт, Сириус, Барли
+Биби / Bibi | Т | A | BH | Нани, Мэйси, Венди
+Бо / Bo | К | A | GZ | Мико, Пирс, Нори
+Болт / Bolt | Т | S | GY | Поко, Скуик, Даг
+Бонни / Bonnie | М | D | K | Скуик, Даг, Джуджу
+Брок / Brock | М | B | KH | Джуджу, Глоуи, Чарли
+Булл / Bull | Т | C | B | Мэйси, Венди, Космо
+Бастер / Buster | Т | C | Z | Поко, Скуик, Даг
+Базз / Buzz | У | C | B | Барли, Спраут, Нани
+Байрон / Byron | П | D | Y | Болт, Сириус, Барли
+Карл / Carl | Д | C | G | Дэррил, Ворон, Корделиус
+Чарли / Charlie | К | C | G | Нита, Алли, Зигги
+Честер / Chester | Д | B | B | Корделиус, Глоуи, Шейд
+Чак / Chuck | Д | C | H | Дэррил, Ворон, Корделиус
+Клэнси / Clancy | Д | C | G | Дэррил, Ворон, Корделиус
+Колетт / Colette | Д | B | H | Шейд, Лили, Мико
+Кольт / Colt | Д | C | H | Шейд, Лили, Мико
+Корделиус / Cordelius | У | C | B | Джуджу, Дэррил, Мэнди
+Космо / Cosmo | К | B | YK | Мортис, Кэндзи, Клэнси, Финкс, R-T
+Ворон / Crow | У | D | | Дэррил, Мэнди, Болт
+Дамиан / Damian | Т | B | B | Драко, Джуджу, Дэррил
+Дэррил / Darryl | Т | C | B | Лу, Поко, Скуик
+Даг / Doug | П | B | B | Спраут, Нани, Мэйси
+Драко / Draco | Т | B | BZ | Мэйси, Венди, Космо
+Динамайк / Dynamike | А | D | H | Дэррил, Ворон, Корделиус
+Эдгар / Edgar | У | A | BH | Нани, Фрэнк, Мэйси, Бо, Эмз
+Эль Примо / El Primo | Т | B | B | Сириус, Чарли, Кит
+Эмз / Emz | К | A | GZ | Нита, Алли, Зигги
+Ева / Eve | Д | C | H | Шейд, Лили, Мико
+Фэнг / Fang | У | C | B | Джуджу, Дэррил, Мэнди
+Финкс / Finx | К | B | GK | Ворон, Корделиус, Глоуи
+Фрэнк / Frank | Т | D | B | Скуик, Даг, Мэнди
+Гэйл / Gale | К | C | B | Зигги, Клэнси, Финкс
+Джин / Gene | К | D | G | Ворон, Корделиус, Шейд
+Джиджи / Gigi | У | A | H | Шейд, Лили, Мико
+Глоуи / Glowy | П | B | G | Барли, Спраут, Нани
+Грей / Gray | П | B | G | Сириус, Барли, Спраут
+Грифф / Griff | К | B | GH | Кольт, Нита, Алли
+Гром / Grom | А | D | K | Драко, Мелоди, Дэррил
+Гас / Gus | П | S | GZ | Спраут, Нани, Мэйси
+Хэнк / Hank | Т | B | Z | Нани, Мэйси, Венди
+Джеки / Jacky | Т | D | Z | Скуик, Даг, Мэнди
+Джэ Ён / Jae-Yong | П | C | G | Даг, Мелоди, Дэррил
+Джанет / Janet | М | B | Y | Скуик, Даг, Джуджу
+Джесси / Jessie | К | B | GZ | Лили, Мико, Пирс
+Джуджу / Juju | А | S | GZK | Ворон, Корделиус, Шейд
+Кадзэ / Kaze | У | B | B | Драко, Даг, Мелоди
+Кэндзи / Kenji | У | C | B | Джуджу, Дэррил, Мэнди
+Кит / Kit | П | C | BG | Барли, Спраут, Нани
+Ларри и Лори / Larry & Lawrie | А | C | Z | Драко, Мелоди, Дэррил
+Леон / Leon | У | D | Y | Джуджу, Дэррил, Мэнди
+Лили / Lily | У | C | B | Джуджу, Дэррил, Мэнди
+Лола / Lola | Д | C | H | Дэррил, Ворон, Корделиус
+Лу / Lou | К | C | Z | Финкс, R-T, Рико
+Луми / Lumi | Д | A | GK | Драко, Даг, Мелоди
+Мэйси / Maisie | М | C | K | Барли, Спраут, Венди
+Мэнди / Mandy | М | C | KY | Чарли, Кит, Барли
+Макс / Max | П | B | GB | Болт, Сириус, Барли
+Мипл / Meeple | К | C | GZ | Шейд, Лили, Мико
+Мэг / Meg | Т | D | H | Сириус, Чарли, Кит
+Мелоди / Melodie | У | B | B | Болт, Сириус, Барли
+Мико / Mico | У | C | K | Джуджу, Дэррил, Мэнди
+Мина / Mina | Д | B | G | Глоуи, Шейд, Лили
+Мо / Moe | Д | B | G | Мелоди, Дэррил, Ворон
+Мортис / Mortis | У | B | B | Болт, Сириус, Барли, Бо, Эмз
+Мистер П. / Mr. P | К | D | Z | Клэнси, Финкс, R-T
+Наджия / Najia | Д | C | G | Глоуи, Чарли, Кит
+Нани / Nani | М | C | K | Скуик, Даг, Джуджу
+Нита / Nita | Д | B | Z | Шейд, Лили, Мико
+Нори / Nori | У | S | HB | Гэйл, Шелли, R-T, Нани, Фрэнк, Мэйси
+Олли / Ollie | Т | B | BZ | Кит, Фрэнк, Нори
+Отис / Otis | К | C | G | Шейд, Лили, Мико
+Пэм / Pam | П | C | Z | Джуджу, Мэнди, Болт
+Перл / Pearl | Д | C | H | Мико, Кит, Фрэнк
+Пенни / Penny | А | C | H | Ворон, Корделиус, Шейд
+Пирс / Pierce | М | A | KY | Шейд, Лили, Мико
+Пайпер / Piper | М | C | KY | Поко, Скуик, Даг
+Поко / Poco | П | D | Z | Мэнди, Болт, Сириус
+R-T / R-T | Д | A | GK | Ворон, Корделиус, Глоуи
+Рико / Rico | Д | B | H | Мелоди, Дэррил, Ворон
+Роза / Rosa | Т | D | Z | Мэйси, Венди, Космо
+Гавс / Ruffs | П | B | G | Барли, Спраут, Нани
+Сэм / Sam | У | C | B | Барли, Спраут, Нани
+Сэнди / Sandy | К | C | GZ | Алли, Зигги, Клэнси
+Шейд / Shade | У | S | BHG | Спраут, Нани, Фрэнк
+Шелли / Shelly | Д | D | B | Лили, Мико, Кит
+Сириус / Sirius | К | B | G | Скуик, Даг, Джуджу
+Спайк / Spike | Д | C | G | Корделиус, Глоуи, Шейд
+Спраут / Sprout | А | A | KZ | Дэррил, Ворон, Корделиус
+Скуик / Squeak | К | D | Z | Клэнси, Финкс, R-T
+Старр Нова / Starr Nova | У | A | B | Шейд, Лили, Мико
+Сту / Stu | У | B | B | Драко, Джуджу, Дэррил
+Вольт / Surge | Д | C | B | Мико, Кит, Фрэнк
+Тара / Tara | Д | B | G | Дэррил, Ворон, Корделиус
+Тик / Tick | А | D | Z | Мелоди, Дэррил, Ворон
+Транк / Trunk | Т | B | B | Поко, Драко, Даг
+Винс / Vince | Д | A | GBYKZ | Ворон, Корделиус, Глоуи
+Венди / Wendy | П | S | GYKZ | Спраут, Нани, Мэйси
+Виллоу / Willow | К | A | BG | Ворон, Корделиус, Шейд
+Зигги / Ziggy | К | C | Z | Даг, Мелоди, Дэррил`;
+
+// Карты ранкеда (Timesaver, сезон с 15 октября 2026). Название / английское | режим | особенности | кто силён
+const DEFAULT_MAPS=`# Захват кристаллов
+Роковая шахта / Hard Rock Mine | G | стены, кусты | Олли, Ева, Хэнк, Сэм
+Подрыв / Undermine | G | стены |
+Танцы до упаду / Let Me Dance | G |
+Сапфировая равнина / Sapphire Plains | G | кусты |
+Кристальная аркада / Crystal Arcade | G | открытая, кусты |
+# Броулбол
+Зловредные поля / Sneaky Fields | B | кусты, стены |
+В центре внимания / Center Stage | B | открытая |
+Пинбол / Pinball Dreams | B | стены |
+Трипл-дриблинг / Triple Dribble | B | кусты |
+Суперпляж / Super Beach | B | открытая, кусты |
+# Ограбление
+Взятие моста / Bridge Too Far | H | тесная | Венди, Шейд, 8-Бит
+Пороховой каньон / Kaboom Canyon | H | открытая |
+Горячая кукуруза / Hot Potato | H | стены |
+Надёжное укрытие / Safe Zone | H | открытая |
+Пит-стоп / Pit Stop | H | тесная, стены |
+# Награда за поимку
+Падающая звезда / Shooting Star | Y | открытая |
+Змеиные степи / Snake Prairie | Y | кусты |
+Гранд-канал / Canal Grande | Y | открытая |
+Укрытие / Hideout | Y | стены |
+Кремовый торт / Layer Cake | Y | стены |
+# Нокаут
+Живописный утёс / Belle's Rock | K | открытая, стены | Даг, Болт, Брок
+Ущелье Золотой руки / Goldarm Gulch | K | открытая |
+В чистом поле / Out in the Open | K | открытая |
+Новые горизонты / New Horizons | K | открытая |
+Пылающий феникс / Flaring Phoenix | K | стены |
+# Горячая зона
+Огненное кольцо / Ring of Fire | Z | тесная, стены |
+Параллельная игра / Parallel Plays | Z | открытая |
+Муравьиные бега / Dueling Beetles | Z | стены, кусты |
+Открытая зона / Open Zone | Z | открытая |
+Инкрустация / Bejeweled | Z | стены |`;
+// Насколько особенность карты помогает классу (+) или мешает (−)
+const MAP_TAGS={
+  "открытая":{"М":1.2,"Д":.4,"Т":-.8,"У":-.6,"А":-.4},
+  "стены":{"А":1.2,"Т":.3,"М":-.6},
+  "кусты":{"У":.8,"Т":.5,"К":.3,"М":-.3},
+  "тесная":{"Т":.8,"У":.6,"Д":.3,"М":-.8}
+};
+
+// Безопасные первые пики и гибкие последние (Timesaver, октябрь 2026)
+const SAFE_FIRST=["gus","amber","bo"];
+const FLEX_LAST=["bibi","griff","nita"];
+
+// Насколько класс атакующего силён против класса защищающегося (0…1) — общий фон, если явного контрпика нет.
+const EDGE={
+  "Д":{"Т":1,"У":1},
+  "Т":{"М":1,"А":1,"П":.5},
+  "К":{"Т":1,"У":1,"А":.5},
+  "У":{"М":1,"А":1,"П":1},
+  "М":{"А":.5,"П":.5,"К":.5},
+  "А":{"Д":.5,"К":.5,"Т":.3},
+  "П":{}
+};
+const edge=(a,b)=>(EDGE[a]&&EDGE[a][b])||0;
+
+let DB=[],MAPS=[];
+
+// Свежая статистика ранкеда. Её каждый день собирает GitHub Actions (scripts/update_stats.py) в ветку data.
+const STATS_URL="https://raw.githubusercontent.com/znakcentrru/draft/data/meta.json";
+let STATS=null;
+const nkey=x=>String(x).toLowerCase().replace(/[^a-z0-9]/g,"");
+const STATS_MIN=300; // меньше матчей — статистика ещё не надёжна, в советы её не подставляем
+const statsOn=()=>!!STATS&&STATS.battles>=STATS_MIN&&S.useStats!==false;
+const plural=(n,f)=>{const a=n%100,b=n%10;return a>10&&a<20?f[2]:b===1?f[0]:b>=2&&b<=4?f[1]:f[2]};
+const nMatches=n=>n.toLocaleString("ru-RU")+" "+plural(n,["матч","матча","матчей"]);
+const nDays=n=>n+" "+plural(n,["день","дня","дней"]);
+const nBattles=n=>n.toLocaleString("ru-RU")+" "+plural(n,["бой","боя","боёв"]);
+const nTrophies=n=>n.toLocaleString("ru-RU")+" "+plural(n,["кубок","кубка","кубков"]);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"})[c]);
+const capRu=x=>x&&x===x.toUpperCase()?x[0]+x.slice(1).toLowerCase():x;
+function mergeBrawlers(out){
+  if(!statsOn())return;
+  const byKey={};out.forEach(b=>{byKey[nkey(b.en)]=b});
+  const minG=Math.max(150,STATS.minGames||0); // тир и режимы — только при достаточном числе матчей
+  const gs=Object.values(STATS.brawlers||{}).map(x=>x.games||0).sort((x,y)=>x-y);
+  const medG=Math.max(1,gs[Math.floor(gs.length/2)]||1);
+  Object.entries(STATS.brawlers||{}).forEach(([k,s])=>{
+    let b=byKey[k];
+    if(!b){
+      if(!CLASSES[s.cls]||s.games<minG)return; // новый бравлер, которого нет в базе
+      const en=String(s.name||k).replace(/[<>"]/g,""),ru=(capRu(s.ru)||"").replace(/[<>"]/g,"")||en;
+      b={name:ru,en:en.toLowerCase(),alt:ru===en?en:ru+" / "+en,cls:s.cls,tier:"C",modes:"",by:[],isNew:true};
+      out.push(b);byKey[k]=b;
+    }
+    if(s.an)b.an=s.an;
+    if(s.avgRank)b.avgRank=s.avgRank;
+    if(s.games&&s.wr!=null){
+      // Тир: смешиваем встроенный со статистикой. Вес статистики растёт с числом матчей
+      // (150 матчей — ~27%, 400 — 50%) и не больше 75%, чтобы встроенная оценка меты не пропадала.
+      // Статистика = винрейт (45% → D, 50% → B, 55% → S) плюс поправка за популярность у сильных игроков:
+      // часто берут — значит, сильный, а низкий винрейт отчасти от того, что его чаще контрят.
+      const w=Math.min(.75,s.games/(s.games+400));
+      const pop=Math.max(-.5,Math.min(1,Math.log2(s.games/medG)*.5));
+      const wrPts=Math.max(0,Math.min(4,(s.wr-.5)*40+2+pop));
+      const pts=(1-w)*TIER_PTS[b.tier]+w*wrPts;
+      b.tier=["D","C","B","A","S"][Math.round(pts)];
+      b.wr=s.wr;b.games=s.games;
+      if(s.games>=minG&&s.modes)b.modes=[...new Set((b.modes+s.modes).split(""))].join("");
+    }
+  });
+  // Пары, связки и контрпики — после добавления новых бойцов, чтобы byKey был полным
+  WITH={};TRIOS={};VS={};
+  const idx=nameIndex(out);
+  const toEn=src=>{const row={};Object.entries(src).forEach(([yk,v])=>{const y=byKey[yk];if(y)row[y.en]=v});return row};
+  Object.entries(STATS.brawlers||{}).forEach(([k,s])=>{
+    const b=byKey[k];if(!b)return;
+    if(s.with)WITH[b.en]=toEn(s.with);
+    if(s.vs)VS[b.en]=toEn(s.vs);
+    // контрпики: сначала из статистики, остальное — из базы, всего до 5.
+    // Имена из базы («поко») сначала приводим к ключам, иначе Set не уберёт повторы.
+    if(s.by&&s.by.length){
+      const fresh=s.by.map(n=>byKey[nkey(n)]).filter(Boolean).map(x=>x.en);
+      const own=b.by.map(x=>idx[x]||x);
+      b.by=[...new Set([...fresh,...own])].slice(0,Math.max(5,own.length));
+    }
+  });
+  (STATS.trios||[]).forEach(([a,b2,c,g,wr])=>{
+    const x=[byKey[a],byKey[b2],byKey[c]];if(x.some(v=>!v))return;
+    TRIOS[x.map(v=>v.en).sort().join("|")]=[g,wr];
+  });
+}
+// Имя (рус., в нижнем регистре) или английский ключ → английский ключ бравлера
+function nameIndex(list){const idx={};list.forEach(b=>{idx[b.name.toLowerCase()]=b.en;idx[b.en]=b.en});return idx}
+function mergeMaps(out){
+  if(!statsOn()||!STATS.maps||!STATS.maps.length)return out;
+  const freshModes=new Set(STATS.maps.map(m=>m.mode));
+  const keep=out.filter(m=>!freshModes.has(m.mode)); // по режимам без свежих данных остаётся ручной список
+  return keep.concat(STATS.maps.map(s=>{
+    const old=out.find(m=>m.mode===s.mode&&nkey(m.alt.split("/").pop())===nkey(s.name));
+    const ru=old?old.name:(s.ru||s.name);
+    const fresh=(s.best||[]).map(n=>{const b=byEn(n);return b?b.en:null}).filter(Boolean);
+    return{name:ru,alt:ru===s.name?s.name:ru+" / "+s.name,mode:s.mode,tags:old?old.tags:[],games:s.games,
+      best:[...new Set([...fresh,...(old?old.best:[])])].slice(0,6)};
+  }));
+}
+function rebuild(){
+  DB=parseDB($id("dbText").value);
+  MAPS=parseMaps($id("mapText").value);
+  if(!curMap())S.map=null;
+  ["ally","enemy","bans"].forEach(k=>{S[k]=S[k].map(v=>v&&byName(v)?v:null)});
+  render();statsLine();renderPlayer(); // имена бойцов и карт в разборе игрока берутся из базы
+}
+function statsLine(){
+  const el=$id("statsLine");
+  if(!STATS){el.textContent="Свежей статистики пока нет — советы строятся по встроенной базе.";return}
+  if(STATS.battles<STATS_MIN){el.textContent=`Статистика ранкеда копится: пока ${nMatches(STATS.battles)}, в советы она попадёт от ${STATS_MIN}. Сейчас советы по встроенной базе.`;return}
+  const d=new Date(STATS.updated),ok=!isNaN(d),days=ok?Math.floor((Date.now()-d)/864e5):0;
+  const when=ok?d.toLocaleDateString("ru-RU",{day:"numeric",month:"long"}):"недавно";
+  el.innerHTML=`${statsOn()?"Статистика ранкеда":"Статистика ранкеда выключена"} — обновлена ${when}${days>2?" (давно не обновлялась)":""}: ${nMatches(STATS.battles)} ранкеда${STATS.rankLabel?` уровня ${STATS.rankLabel.replace(" I и выше","+")}`:""} ${(STATS.daysCovered||STATS.windowDays)<STATS.windowDays?`за ${nDays(STATS.daysCovered)} (дальше копится до ${nDays(STATS.windowDays)})`:`за последние ${nDays(STATS.windowDays)}`}. `+
+    `<button class="btn" id="statsToggle" style="padding:3px 10px;font-size:13px">${statsOn()?"Выключить":"Включить"}</button>`;
+  $id("statsToggle").onclick=()=>{S.useStats=!statsOn();rebuild()};
+}
+async function loadStats(){
+  try{
+    const ctl=new AbortController();setTimeout(()=>ctl.abort(),8000);
+    const r=await fetch(STATS_URL+"?h="+Math.floor(Date.now()/36e5),{signal:ctl.signal,cache:"no-store"});
+    if(!r.ok)throw new Error(r.status);
+    const d=await r.json();
+    if(!d||!d.brawlers)throw new Error("empty");
+    const changed=!STATS||STATS.updated!==d.updated;
+    STATS=d;try{localStorage.setItem("bsdraft_stats",JSON.stringify(d))}catch(e){}
+    if(changed)rebuild();
+  }catch(e){}
+  statsLine();
+}
+function parseMaps(text){
+  const out=[];
+  text.split("\n").forEach(line=>{
+    if(line.trim().startsWith("#"))return;
+    const p=line.split("|").map(s=>s.trim());
+    if(p.length<2||!p[0])return;
+    const nm=p[0].split("/").map(s=>s.trim());
+    out.push({name:nm[0],alt:p[0],mode:(p[1]||"").toUpperCase().trim(),
+      tags:(p[2]||"").split(",").map(s=>s.trim().toLowerCase()).filter(t=>MAP_TAGS[t]),
+      best:(p[3]||"").split(",").map(s=>s.trim().toLowerCase()).filter(Boolean).map(resolveName)});
+  });
+  return mergeMaps(out);
+}
+function loadMaps(){
+  let t=null;try{t=localStorage.getItem("bsdraft_maps1")}catch(e){}
+  $id("mapText").value=t||DEFAULT_MAPS;
+  MAPS=parseMaps(t||DEFAULT_MAPS);
+}
+const curMap=()=>S.map?MAPS.find(m=>m.name===S.map&&m.mode===S.mode):null;
+function mapBonus(b,plus,minus){
+  const m=curMap();if(!m)return 0;
+  let s=0;
+  if(m.best.includes(b.en)){s+=2;plus.push("силён на карте")}
+  let t=0;m.tags.forEach(g=>{t+=MAP_TAGS[g][b.cls]||0});
+  if(t>=.5)plus.push("карта под его класс");else if(t<=-.5)minus.push("карта неудобна классу");
+  return s+t;
+}
+function parseDB(text){
+  const out=[];
+  text.split("\n").forEach(line=>{
+    const p=line.split("|").map(s=>s.trim());
+    if(p.length<2||!p[0])return;
+    // символы разметки в именах не нужны и ломали бы страницу — убираем сразу
+    const names=p[0].replace(/[<>"]/g,"").split("/").map(s=>s.trim());
+    const cls=(p[1]||"").toUpperCase();
+    const tier=(p[2]||"C").toUpperCase();
+    out.push({
+      name:names[0],en:(names[1]||names[0]).toLowerCase(),alt:names.join(" / "),
+      cls:CLASSES[cls]?cls:"Д",tier:TIER_PTS[tier]!==undefined?tier:"C",
+      modes:(p[3]||"").toUpperCase(),
+      by:(p[4]||"").split(",").map(s=>s.trim().toLowerCase()).filter(Boolean)
+    });
+  });
+  mergeBrawlers(out);
+  const idx=nameIndex(out);
+  out.forEach(b=>{b.by=b.by.map(x=>idx[x]||x)});
+  NAME_IDX=idx;
+  BY_EN={};BY_KEY={};out.forEach(b=>{BY_EN[b.en]=b;const k=nkey(b.en);if(k&&!BY_KEY[k])BY_KEY[k]=b});
+  SYN=null;
+  return out;
+}
+let NAME_IDX={},BY_EN={},BY_KEY={},SYN=null;
+const resolveName=x=>NAME_IDX[x]||x;
+// Бравлер по английскому ключу из базы («el primo») или имени из API («EL PRIMO»)
+const byEn=n=>BY_EN[n]||BY_KEY[nkey(n)];
+function loadDB(){
+  let t=null;try{t=localStorage.getItem("bsdraft_db2")}catch(e){}
+  $id("dbText").value=t||DEFAULT_DB;
+  DB=parseDB(t||DEFAULT_DB);
+}
+
+const S={mode:"G",map:null,qt:"auto",first:true,ally:[null,null,null],enemy:[null,null,null],bans:[null,null,null,null,null,null],tab:"pick"};
+try{const s=JSON.parse(localStorage.getItem("bsdraft_state")||"null");if(s)Object.assign(S,s)}catch(e){}
+const save=()=>{try{localStorage.setItem("bsdraft_state",JSON.stringify(S))}catch(e){}};
+const byName=n=>DB.find(b=>b.name===n);
+const used=()=>new Set([...S.ally,...S.enemy,...S.bans].filter(Boolean));
+
+// Порядок пиков 1-2-2-1
+function order(){const A="ally",E="enemy";return S.first?[A,E,E,A,A,E]:[E,A,A,E,E,A]}
+function nextStep(){
+  const cnt={ally:0,enemy:0};const ord=order();
+  const filled={ally:S.ally.filter(Boolean).length,enemy:S.enemy.filter(Boolean).length};
+  for(let i=0;i<ord.length;i++){const t=ord[i];if(cnt[t]<filled[t]){cnt[t]++;continue}return{team:t,idx:i}}
+  return null;
+}
+
+// Сила X против Y: явный контрпик из таблицы весит 2, класс — фон до 0.7
+// Результаты пар из статистики: VS[x][y] = [процент побед x против y, матчей]
+let VS={};
+// Связки: WITH[x][y] = [процент побед вместе, матчей]; TRIOS["a|b|c"] = [матчей, процент побед]
+let WITH={},TRIOS={};
+// Синергия: насколько вместе выигрывают чаще, чем ожидалось бы по силе каждого (+5 = на 5% чаще)
+function duoSyn(x,y){
+  const st=statsOn()&&WITH[x.en]&&WITH[x.en][y.en];
+  if(!st||x.wr==null||y.wr==null)return null;
+  const exp=x.wr*100+y.wr*100-50;
+  return{wr:st[0],g:st[1],exp,syn:(st[0]-exp)*st[1]/(st[1]+150)};
+}
+function trioSyn(a,b,c){
+  const st=statsOn()&&TRIOS[[a.en,b.en,c.en].sort().join("|")];
+  if(!st||[a,b,c].some(x=>x.wr==null))return null;
+  const exp=(a.wr+b.wr+c.wr)*100-100;
+  return{g:st[0],wr:st[1],exp,syn:(st[1]-exp)*st[0]/(st[0]+100)};
+}
+function matchup(x,y){
+  const st=statsOn()&&VS[x.en]&&VS[x.en][y.en];
+  if(st&&st[1]>=60&&x.wr!=null){
+    // Особенность именно этой пары: фактический винрейт x против y минус ожидаемый по общей силе обоих
+    // (x в среднем +a% к середине, y +b% → ожидаем 50+a−b). При малом числе матчей сглаживаем.
+    const yw=y.wr!=null?y.wr*100:50;
+    const lift=(st[0]-(x.wr*100-yw+50))*st[1]/(st[1]+150);
+    const d=Math.max(-3,Math.min(3,lift/3));
+    return{d,hard:lift>=3?1:lift<=-3?-1:0,wr:Math.round(st[0]),g:st[1],stats:true};
+  }
+  let d=0,hard=0;
+  if(y.by.includes(x.en)){d+=2;hard=1}
+  if(x.by.includes(y.en)){d-=2;hard=-1}
+  d+=(edge(x.cls,y.cls)-edge(y.cls,x.cls))*.7;
+  return{d,hard};
+}
+
+function score(b){
+  const allies=S.ally.filter(Boolean).map(byName).filter(Boolean);
+  const enemies=S.enemy.filter(Boolean).map(byName).filter(Boolean);
+  let s=TIER_PTS[b.tier]*.8;const plus=[],minus=[];
+  if(b.tier==="S")plus.push("топ меты");
+  if(b.modes.includes(S.mode)){s+=2.5;plus.push("силён на режиме")}
+  s+=mapBonus(b,plus,minus);
+  enemies.forEach(e=>{
+    const m=matchup(b,e);s+=m.d;
+    if(m.stats){
+      if(m.hard>0)plus.push(`${e.name} во врагах: ${m.wr}% побед`);
+      else if(m.hard<0)minus.push(`${e.name} во врагах: всего ${m.wr}% побед`);
+      return;
+    }
+    if(m.hard>0)plus.push("контрпик к "+e.name);
+    else if(m.d>.3)plus.push("удобен против "+e.name);
+    if(m.hard<0)minus.push("его контрит "+e.name);
+    else if(m.d<-.3)minus.push("неудобен против "+e.name);
+  });
+  const nx=nextStep();
+  if(nx&&nx.team==="ally"){
+    if(nx.idx===0&&SAFE_FIRST.includes(b.en)){s+=1;plus.push("безопасный первый пик")}
+    if(nx.idx===5&&FLEX_LAST.includes(b.en)){s+=.7;plus.push("гибкий последний пик")}
+  }
+  // связки с уже взятыми союзниками
+  allies.forEach(a=>{
+    const d=duoSyn(b,a);if(!d)return;
+    s+=Math.max(-2,Math.min(2,d.syn/3));
+    if(d.syn>=3)plus.push(`${a.name} в команде: ${pct(d.wr)}% побед вместе`);
+    else if(d.syn<=-3)minus.push(`${a.name} в команде: всего ${pct(d.wr)}% побед вместе`);
+  });
+  if(allies.length===2){
+    const t=trioSyn(b,allies[0],allies[1]);
+    if(t){
+      s+=Math.max(-2,Math.min(2,t.syn/3));
+      if(t.syn>=3)plus.push(`тройка ${allies[0].name} + ${allies[1].name} + он: ${pct(t.wr)}% побед (${nMatches(t.g)})`);
+      else if(t.syn<=-3)minus.push(`тройка ${allies[0].name} + ${allies[1].name} + он: всего ${pct(t.wr)}% побед`);
+    }
+  }
+  const same=allies.filter(a=>a.cls===b.cls).length;
+  if(allies.length&&!same)s+=.5;
+  if(same){s-=.8*same;minus.push("класс уже есть в команде")}
+  return{s,plus,minus};
+}
+function banScore(b){
+  const allies=S.ally.filter(Boolean).map(byName).filter(Boolean);
+  let s=TIER_PTS[b.tier];const plus=[],minus=[];
+  if(b.tier==="S")plus.push("топ меты");
+  if(b.modes.includes(S.mode)){s+=2.5;plus.push("силён на режиме")}
+  s+=Math.max(0,mapBonus(b,plus,[]));
+  allies.forEach(a=>{
+    const m=matchup(b,a);
+    if(m.d>0)s+=m.d;
+    if(m.hard>0)plus.push(m.stats?`против нашего: ${a.name} — ${m.wr}% побед у него`:"контрит нашего "+a.name);
+  });
+  return{s,plus,minus};
+}
+
+function dot(cls){return `<span class="dot" style="background:var(${CLASSES[cls][1]})" title="${CLASSES[cls][0]}"></span>`}
+function slotHTML(team,i,val,isNext,label){
+  const b=val&&byName(val);
+  return `<div class="slot ${val?"filled":""} ${isNext?"next":""}" role="button" tabindex="0" data-team="${team}" data-i="${i}">
+    ${b?dot(b.cls):""}<span class="nm">${val||label}</span>${val?`<button class="x" aria-label="Убрать ${val}" data-clear="${team}:${i}">×</button>`:""}</div>`;
+}
+function render(){
+  $id("modes").innerHTML=Object.entries(MODES).map(([k,v])=>`<button class="chip" data-mode="${k}" aria-pressed="${S.mode===k}">${v}</button>`).join("");
+  const mm=MAPS.filter(m=>m.mode===S.mode);
+  $id("maps").innerHTML=`<button class="chip" data-map="" aria-pressed="${!S.map}">Любая</button>`+
+    mm.map(m=>`<button class="chip" data-map="${esc(m.name)}" aria-pressed="${S.map===m.name}">${esc(m.name)}</button>`).join("");
+  const cm=curMap();
+  $id("mapInfo").innerHTML=!cm?(mm.length?"Выберите карту — советы учтут её особенности.":"Для этого режима карт в базе нет."):
+    `${cm.tags.length?"Особенности: "+cm.tags.join(", ")+".":"Особенности не указаны."}${cm.best.length?" Сильны здесь: "+cm.best.map(ruB).join(", ")+".":""}${cm.games?` Статистика: ${nMatches(cm.games)} ранкеда.`:""}`;
+  $id("firstBtn").setAttribute("aria-pressed",S.first);
+  $id("firstBtn").textContent=S.first?"Мы пикаем первыми":"Враги пикают первыми";
+  const nx=nextStep();
+  const nextIdx=t=>nx&&nx.team===t?S[t].findIndex(v=>!v):-1;
+  $id("allySlots").innerHTML=S.ally.map((v,i)=>slotHTML("ally",i,v,i===nextIdx("ally"),"+ пик")).join("");
+  $id("enemySlots").innerHTML=S.enemy.map((v,i)=>slotHTML("enemy",i,v,i===nextIdx("enemy"),"+ пик")).join("");
+  $id("banSlots").innerHTML=S.bans.map((v,i)=>slotHTML("bans",i,v,false,"+ бан")).join("");
+  const turn=$id("turn");
+  if(!nx)turn.innerHTML="Драфт закончен. Удачи в матче!";
+  else turn.innerHTML=`Ход ${nx.idx+1} из 6 (порядок 1-2-2-1): пикают <b>${nx.team==="ally"?"мы":"враги"}</b>.`;
+  $id("tabPick").setAttribute("aria-pressed",S.tab==="pick");
+  $id("tabBan").setAttribute("aria-pressed",S.tab==="ban");
+  $id("recPanel").dataset.tab=S.tab;
+  REC.pick=recList("pick");REC.ban=recList("ban");
+  $id("recs").innerHTML=recHTML(REC.pick,"pick");
+  $id("recsBan").innerHTML=recHTML(REC.ban,"ban");
+  const ord=order();
+  $id("order").innerHTML=ord.map((t,i)=>{
+    const before=ord.slice(0,i+1).filter(x=>x===t).length;
+    const done=S[t].filter(Boolean).length>=before;
+    return `<span class="${t==="ally"?"oa":"oe"} ${done?"done":""} ${nx&&nx.idx===i?"now":""}">${i+1}·${t==="ally"?"Мы":"Враги"}</span>`}).join("");
+  $id("legend").innerHTML=Object.entries(CLASSES).map(([k,[n]])=>`<span>${dot(k)}${k} — ${n}</span>`).join("");
+  renderQuick();
+  renderAnom();
+  renderSyn();
+  save();
+}
+const REC={pick:[],ban:[]};
+function recList(kind){
+  const u=used();
+  return DB.filter(b=>!u.has(b.name)).map(b=>({b,...(kind==="pick"?score(b):banScore(b))})).sort((a,c)=>c.s-a.s).slice(0,8);
+}
+function recHTML(list,kind){
+  return list.map((r,i)=>`<div class="recw"><button class="rec" data-rec="${r.b.name}" data-kind="${kind}">
+    ${dot(r.b.cls)}<span><span class="nm">${r.b.name}</span> <span class="tier ${r.b.tier}">${r.b.tier}</span> <span class="cls">${CLASSES[r.b.cls][0]}</span>${flagBadge(r.b)}</span><span class="sc">${r.s.toFixed(1)}</span><kbd class="hk" title="${kind==="pick"?"Alt":"Alt+Shift"}+${i+1}">${kind==="pick"?"":"⇧"}${i+1}</kbd>
+    <span class="why">${r.plus.map(p=>`<span class="plus">+ ${p}</span>`).join(" · ")}${r.plus.length&&r.minus.length?" · ":""}${r.minus.map(p=>`<span class="minus">− ${p}</span>`).join(" · ")||(r.plus.length?"":"нейтральный выбор")}</span></button><button class="info" data-card="${r.b.name}" aria-label="Разбор: ${r.b.name}" title="Разбор бойца">i</button></div>`).join("")||`<p class="small">Все бравлеры заняты.</p>`;
+}
+
+// ---------- Аномальные бойцы и карточка бойца ----------
+const MODE_SHORT={G:"захват",B:"броулбол",H:"ограбление",Y:"награда",K:"нокаут",Z:"гор. зона"};
+const FLAGS={
+  high:["Очень высокий винрейт","good","Выигрывает заметно чаще остальных — возможно, сейчас перебалансирован. Если не берёте сами, подумайте о бане."],
+  hidden:["Сильнее, чем кажется","good","Берут редко, а выигрывает часто. Хороший сюрприз для соперника."],
+  skill:["Для сильных игроков","good","На нём играют игроки с рангом выше среднего — раскрывается в опытных руках."],
+  situational:["Ситуативный","","Результат сильно зависит от вражеского состава. Брать под удобных соперников, а не вслепую."],
+  mapdep:["Зависит от карты","","На одних картах заметно сильнее, чем на других — смотрите список карт ниже."],
+  easyopp:["Удобные соперники","","Часть побед — за счёт того, что его берут под удобный вражеский состав, а не вслепую."],
+  overrated:["Переоценён","bad","Берут очень часто, а выигрывает реже половины. Скорее всего, его часто контрят — особенно если взять первым."],
+  low:["Очень низкий винрейт","bad","Проигрывает заметно чаще остальных. Брать только под удобных соперников и на сильных для него картах."]
+};
+const FLAG_ORDER=Object.keys(FLAGS);
+function flagBadge(b){
+  const f=b.an&&statsOn()?b.an.flags:[];
+  if(!f||!f.length)return"";
+  const k=f.slice().sort((x,y)=>FLAG_ORDER.indexOf(x)-FLAG_ORDER.indexOf(y))[0];
+  return ` <span class="flag ${FLAGS[k][1]}">${FLAGS[k][0].toLowerCase()}</span>`;
+}
+const ruB=n=>{const b=byEn(n);return b?b.name:esc(n)};
+function ruMap(en,mode){
+  const m=MAPS.find(x=>x.mode===mode&&nkey(x.alt.split("/").pop())===nkey(en));
+  if(m)return m.name;
+  const s=STATS&&(STATS.maps||[]).find(x=>nkey(x.name)===nkey(en));
+  return s&&s.ru||en;
+}
+const pct=x=>x.toLocaleString("ru-RU",{maximumFractionDigits:1});
+// знак ставим по уже округлённому значению, чтобы не было «+0» и «−0»
+const sign=x=>{const r=Math.round(x*10)/10;return(r>0?"+":r<0?"−":"")+pct(Math.abs(r))};
+function renderAnom(){
+  const panel=$id("anomPanel");
+  const list=statsOn()?DB.filter(b=>b.an&&b.an.flags&&b.an.flags.length):[];
+  panel.hidden=!list.length;
+  if(!list.length)return;
+  const cnt={};list.forEach(b=>b.an.flags.forEach(f=>{cnt[f]=(cnt[f]||0)+1}));
+  const f=S.anomF&&cnt[S.anomF]?S.anomF:"";
+  $id("anomCount").textContent=`${list.length} из ${DB.filter(b=>b.an).length} разобранных`;
+  $id("anomFilters").innerHTML=`<button class="chip" data-anomf="" aria-pressed="${!f}">Все</button>`+
+    FLAG_ORDER.filter(k=>cnt[k]).map(k=>`<button class="chip" data-anomf="${k}" aria-pressed="${f===k}">${FLAGS[k][0]} · ${cnt[k]}</button>`).join("");
+  const shown=list.filter(b=>!f||b.an.flags.includes(f))
+    .sort((a,c)=>c.an.flags.length-a.an.flags.length||Math.abs(c.wr-.5)-Math.abs(a.wr-.5));
+  $id("anomList").innerHTML=shown.map(b=>{
+    const a=b.an;
+    const good=a.good.slice(0,3).map(x=>ruB(x[0])).join(", ");
+    const bad=a.bad.slice(0,3).map(x=>ruB(x[0])).join(", ");
+    return `<button class="anom" data-card="${b.name}">
+      <span class="top">${dot(b.cls)}<span class="nm">${b.name}</span><span class="tier ${b.tier}">${b.tier}</span><span class="small">${pct(b.wr*100)}% побед · в ${pct(a.pick)}% матчей</span></span>
+      <span class="top">${a.flags.slice().sort((x,y)=>FLAG_ORDER.indexOf(x)-FLAG_ORDER.indexOf(y)).map(k=>`<span class="flag ${FLAGS[k][1]}">${FLAGS[k][0]}</span>`).join("")}</span>
+      ${good?`<span class="ln">Брать против: ${good}</span>`:""}${bad?`<span class="ln">Не брать против: ${bad}</span>`:""}
+    </button>`}).join("");
+}
+function synItem(list,x,tag){
+  const who=list.map(b=>`<button data-card="${b.name}">${dot(b.cls)}${b.name}</button>`).join(`<span class="plus-sign">+</span>`);
+  return `<div class="syn"><span class="who">${who}</span><span class="sc" title="побед вместе">${pct(x.wr)}%</span>
+    <span class="ln">${nMatches(x.g)} вместе · ${sign(x.syn)} к ожидаемому (по силе каждого — ${pct(x.exp)}%)${tag?" · "+tag:""}</span></div>`;
+}
+// Зависит только от базы и статистики, поэтому считается один раз после parseDB, а не при каждом render()
+function synData(){
+  if(SYN)return SYN;
+  const duos=[],trios=[];
+  const seen=new Set();
+  Object.keys(WITH).forEach(a=>Object.keys(WITH[a]).forEach(b=>{
+    const k=[a,b].sort().join("|");if(seen.has(k))return;seen.add(k);
+    const A=byEn(a),B=byEn(b);if(!A||!B)return;
+    const d=duoSyn(A,B);if(d)duos.push({list:[A,B],...d});
+  }));
+  Object.keys(TRIOS).forEach(k=>{
+    const L=k.split("|").map(byEn);if(L.some(v=>!v))return;
+    const t=trioSyn(L[0],L[1],L[2]);if(t)trios.push({list:L,...t});
+  });
+  return SYN={duos,trios};
+}
+function renderSyn(){
+  const panel=$id("synPanel");
+  if(!statsOn()){panel.hidden=true;return}
+  const{duos,trios}=synData();
+  panel.hidden=!duos.length&&!trios.length;
+  if(panel.hidden)return;
+  const tabs={duo:"Пары",trio:"Тройки",pop:"Популярные тройки"};
+  const tab=S.synTab&&tabs[S.synTab]?S.synTab:"duo";
+  $id("synTabs").innerHTML=Object.entries(tabs).map(([k,v])=>`<button class="chip" data-syntab="${k}" aria-pressed="${tab===k}">${v}</button>`).join("");
+  $id("synCount").textContent=`${duos.length} ${plural(duos.length,["пара","пары","пар"])} и ${trios.length} ${plural(trios.length,["тройка","тройки","троек"])} `;
+  let items=[];
+  if(tab==="duo")items=duos.filter(x=>x.wr>=52&&x.syn>=1).sort((a,b)=>b.syn-a.syn).slice(0,15);
+  if(tab==="trio")items=trios.filter(x=>x.wr>=53&&x.syn>=1).sort((a,b)=>b.syn-a.syn).slice(0,15);
+  if(tab==="pop")items=trios.slice().sort((a,b)=>b.g-a.g).slice(0,15);
+  $id("synList").innerHTML=items.map(x=>synItem(x.list,x,"")).join("")||`<p class="small" style="margin:0">Пока мало данных — связки появятся после следующих сборов.</p>`;
+}
+// ---------- Разбор игрока ----------
+const PLAYER_URL=t=>`https://raw.githubusercontent.com/znakcentrru/draft/data/players/${t}.json`;
+const EDIT_URL="https://github.com/znakcentrru/draft/edit/main/players.txt";
+// Заявка на отслеживание: issue с готовым заголовком; его обрабатывает .github/workflows/add-player.yml
+const ISSUE_URL=t=>"https://github.com/znakcentrru/draft/issues/new?title="+encodeURIComponent("Отслеживать игрока #"+t)+
+  "&body="+encodeURIComponent("Заявка с сайта «Драфт-подсказчик».\n\nТег: #"+t+"\n\nНичего менять не нужно — нажмите «Create». Тег проверится автоматически, ответ придёт сюда.");
+const plRequests=()=>{try{return JSON.parse(localStorage.getItem("bsdraft_req")||"{}")}catch(e){return{}}};
+const normTag=t=>String(t).toUpperCase().replace(/O/g,"0").replace(/[^0-9A-Z]/g,"");
+const bTime=t=>new Date(`${t.slice(0,4)}-${t.slice(4,6)}-${t.slice(6,8)}T${t.slice(9,11)}:${t.slice(11,13)}:${t.slice(13,15)}Z`);
+let PLAYER=null,plReq=0;
+async function loadPlayer(raw){
+  const t=normTag(raw),out=$id("plOut");
+  if(t.length<3){out.innerHTML=`<p class="small">Введите тег — он есть в профиле в игре, под ником.</p>`;return}
+  try{localStorage.setItem("bsdraft_tag",t)}catch(e){}
+  const req=++plReq;PLAYER=null; // ответ на более ранний запрос не должен затереть более поздний
+  out.innerHTML=`<p class="small">Загружаю #${t}…</p>`;
+  try{
+    const r=await fetch(PLAYER_URL(t)+"?h="+Math.floor(Date.now()/6e5),{cache:"no-store"});
+    if(req!==plReq)return;
+    if(r.status===404){
+      const req=plRequests()[t],ago=req?Math.round((Date.now()-req)/6e4):null;
+      out.innerHTML=`<p style="margin:0 0 6px">Игрока <b>#${t}</b> пока нет в списке отслеживания.</p>
+        ${ago!=null&&ago<120?`<p style="margin:0 0 8px">Заявка отправлена ${ago<1?"только что":ago+" мин назад"}. Обычно игрок появляется через 5–10 минут после заявки.</p>
+          <div class="row" style="justify-content:flex-start;margin-bottom:8px"><button class="btn primary" type="button" data-plretry="${t}">Проверить снова</button><a class="btn" href="${ISSUE_URL(t)}" target="_blank" rel="noopener" data-plreq="${t}">Отправить заявку ещё раз</a></div>`:
+          `<div class="row" style="justify-content:flex-start;margin-bottom:8px"><a class="btn primary" href="${ISSUE_URL(t)}" target="_blank" rel="noopener" data-plreq="${t}">Добавить в отслеживание</a></div>`}
+        <p class="small" style="margin:0">Откроется GitHub с готовой заявкой — нажмите «Create» («Создать»), нужен аккаунт GitHub. Тег проверится автоматически, и через 5–10 минут здесь появится разбор: последние 25 боёв, а дальше история будет копиться при каждом сборе. Можно и вручную: допишите строку <b>#${t}</b> в файл <a href="${EDIT_URL}" target="_blank" rel="noopener">players.txt</a> — тогда игрок появится после ближайшего планового сбора.</p>`;
+      return;
+    }
+    if(!r.ok)throw new Error(r.status);
+    const d=await r.json();
+    if(req!==plReq)return;
+    PLAYER=d;renderPlayer();
+  }catch(e){if(req===plReq)out.innerHTML=`<p class="small">Не удалось загрузить данные: ${esc(e.message||e)}. Попробуйте позже.</p>`}
+}
+function renderPlayer(){
+  const d=PLAYER,out=$id("plOut");if(!d)return;
+  const all=d.battles||[],gwr=d.gwr||{};
+  const upd=d.updated?new Date(d.updated).toLocaleString("ru-RU",{day:"numeric",month:"long",hour:"2-digit",minute:"2-digit"}):"";
+  let h=`<p style="margin:0 0 10px"><b>${esc(d.name||"")}</b> ${esc(d.tag||"")} · ${d.trophies!=null?nTrophies(d.trophies):""}${upd?` · обновлено ${upd}`:""}</p>`;
+  if(!all.length){out.innerHTML=h+`<p class="small" style="margin:0">Боёв пока нет. После техобслуживания история боёв в игре обнуляется — сыграйте несколько матчей, и они появятся после ближайшего сбора.</p>`;return}
+  const q=e=>e.q||"r";
+  const nR=all.filter(x=>q(x)==="r").length,nT=all.length-nR;
+  const F=S.plF==="r"||S.plF==="t"?S.plF:"all";
+  const bs=all.filter(x=>F==="all"||q(x)===F);
+  h+=`<div class="chips" style="margin-bottom:10px">${[["all",`Все · ${all.length}`],["r",`Ранкед · ${nR}`],["t",`Обычные · ${nT}`]].map(([k,v])=>`<button class="chip" data-plf="${k}" aria-pressed="${F===k}">${v}</button>`).join("")}</div>`;
+  if(!bs.length){out.innerHTML=h+`<p class="small" style="margin:0">Таких боёв пока нет.</p>`;return}
+  // сводка по выбранным боям
+  const agg=(key)=>{const m={};bs.forEach(x=>[].concat(key(x)).forEach(k=>{const v=m[k]=m[k]||[0,0];v[0]++;if(x.win)v[1]++}));return m};
+  const wins=bs.filter(x=>x.win).length,wr=100*wins/bs.length;
+  const ranks=all.filter(x=>q(x)==="r"&&x.r).map(x=>x.r);
+  // Вердикт пика — по месту среди всех вариантов (an[3]: сколько процентов вариантов оценены выше).
+  // Отрыв от «лучшей замены» не годится: максимум из ~100 оценок всегда немного завышен.
+  const better=x=>x.an?(x.an[3]!=null?x.an[3]:(x.an[1]<=1.5?0:x.an[1]<=3?20:60)):null;
+  const rated=bs.filter(x=>x.an);
+  const good=rated.length?Math.round(100*rated.filter(x=>better(x)<=30).length/rated.length):null;
+  h+=`<div class="tiles">
+    <div class="tile"><div class="v">${bs.length}</div><div class="k">${plural(bs.length,["бой","боя","боёв"])} в истории</div></div>
+    <div class="tile"><div class="v">${pct(wr)}%</div><div class="k">побед</div></div>
+    ${ranks.length?`<div class="tile"><div class="v" style="font-size:18px">${rankName(ranks[ranks.length-1])}</div><div class="k">ранг в ранкеде сейчас${Math.max(...ranks)>ranks[ranks.length-1]?` · был до ${rankName(Math.max(...ranks))}`:""}</div></div>`:""}
+    ${good!=null?`<div class="tile"><div class="v">${good}%</div><div class="k">пиков в ранкеде — среди 30% лучших вариантов под состав врагов</div></div>`:""}
+  </div>`;
+  const Bm=Object.entries(agg(x=>x.b)).sort((a,b)=>b[1][0]-a[1][0]).slice(0,10);
+  // «К среднему» — только по боям в ранкеде: сравниваем со средним винрейтом бойца в ранкеде (все ранги).
+  // В обычных боях подбор соперников другой, сравнение было бы некорректным.
+  const rk={};all.forEach(x=>{if(q(x)!=="r")return;const v=rk[x.b]=rk[x.b]||[0,0];v[0]++;if(x.win)v[1]++});
+  const showAvg=F!=="t"&&nR>0; // сравнение только по ранкеду — без боёв в ранкеде колонку не показываем
+  const rowB=([n,[g,w]])=>{const x=byEn(n),my=100*w/g,gl=gwr[n]!=null?gwr[n]*100:null,[rg,rw]=rk[n]||[0,0];
+    const cell=!showAvg?"":`<td class="n">${gl!=null&&rg>=5?`<span class="${100*rw/rg-gl>=0?"up":"down"}">${sign(100*rw/rg-gl)}</span>`:`<span class="small">${rg<5?"мало игр":"—"}</span>`}</td>`;
+    return `<tr><td>${x?dot(x.cls):""} ${ruB(n)}</td><td class="n">${g}</td><td class="n">${pct(my)}%</td>${cell}</tr>`};
+  // Соперники от худшего винрейта к лучшему; делим список пополам, чтобы один боец не попал в оба столбца
+  const E=Object.entries(agg(x=>x.en)).filter(([,v])=>v[0]>=3).sort((a,b)=>a[1][1]/a[1][0]-b[1][1]/b[1][0]);
+  const half=Math.min(5,Math.ceil(E.length/2));
+  const hard=E.slice(0,half),easy=E.slice(half).reverse().slice(0,5);
+  const li2=(arr)=>arr.length?`<ul style="margin:0;padding-left:18px">${arr.map(([n,[g,w]])=>`<li>${ruB(n)} — ${pct(100*w/g)}% побед <span class="small">(${nBattles(g)})</span></li>`).join("")}</ul>`:`<p class="small" style="margin:0">Мало боёв.</p>`;
+  const M=Object.entries(agg(x=>x.mode)).sort((a,b)=>b[1][0]-a[1][0]);
+  const sug={};bs.forEach(x=>{if(x.an&&better(x)>30)x.an[2].slice(0,2).forEach(([n])=>{sug[n]=(sug[n]||0)+1})});
+  const sugL=Object.entries(sug).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  h+=`<div class="pl-grid" style="margin-top:14px">
+    <div><h3>Ваши бойцы</h3><table class="tbl"><tr><th>Боец</th><th class="n">Боёв</th><th class="n">Побед</th>${showAvg?`<th class="n" title="Ваш процент побед на этом бойце в ранкеде минус его средний процент побед в ранкеде по всем рангам (от 5 ваших боёв в ранкеде)">К среднему в ранкеде</th>`:""}</tr>${Bm.map(rowB).join("")}</table></div>
+    <div><h3>Тяжелее всего против</h3>${li2(hard)}<h3 style="margin-top:12px">Легче всего против</h3>${li2(easy)}</div>
+    <div><h3>Режимы</h3><table class="tbl">${M.map(([m,[g,w]])=>`<tr><td>${MODES[m]||m}</td><td class="n">${g}</td><td class="n">${pct(100*w/g)}%</td></tr>`).join("")}</table>
+      ${sugL.length?`<h3 style="margin-top:12px">Стоит попробовать</h3><p class="small" style="margin:0">Чаще всего были бы сильнее вашего пика под составы врагов: ${sugL.map(([n,c])=>`${ruB(n)} (${c})`).join(", ")}.</p>`:""}</div>
+  </div>`;
+  // название карты: из базы и статистики; для карт не из пула ранкеда — из русской вики (mapsRu), иначе как в API
+  const mapName=b=>{const n=ruMap(b.map,b.mode);return n===b.map&&d.mapsRu&&d.mapsRu[b.map]||n};
+  const last=bs.slice(-15).reverse();
+  h+=`<h3 style="margin:16px 0 6px;font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)">Последние бои</h3><div class="syns">${last.map(b=>{
+    const tm=bTime(b.t).toLocaleString("ru-RU",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"});
+    const an=b.an;let v="";
+    if(an){const [own,,alts]=an,bt=better(b),place=an[3]!=null?` — лучше ${100-bt}% вариантов`:"";
+      const alt=n=>alts.slice(0,n).map(([x,e])=>`${ruB(x)} (${pct(e)}%)`).join(", ");
+      v=bt<=10?`<span class="up">Отличный пик</span>${place}, оценка ${pct(own)}% против этого состава`:
+        bt<=30?`Нормальный пик${place}, оценка ${pct(own)}%; сильнее было бы ${alt(2)}`:
+        `<span class="down">Можно было лучше</span>${place}, оценка ${pct(own)}%; сильнее под этот состав: ${alt(3)}`}
+    const lvl=q(b)==="r"?(b.r?` <span class="small">(${rankName(b.r)})</span>`:""):(b.bt!=null?` <span class="small">(${nTrophies(b.bt)} на бойце)</span>`:"");
+    return `<div class="match ${b.win?"win":"loss"}"><span><b>${b.win?"Победа":"Поражение"}</b> · ${q(b)==="r"?"ранкед":"обычный бой"} · ${ruB(b.b)}${lvl}</span>
+      <span class="meta">${tm} · ${MODES[b.mode]||b.mode}${b.map?` · ${esc(mapName(b))}`:""} · с ${b.al.map(ruB).join(", ")} · против ${b.en.map(ruB).join(", ")}</span>
+      ${v?`<span class="verdict">${v}</span>`:""}</div>`}).join("")}</div>
+    <p class="small" style="margin:10px 0 0">Оценка пика — только для ранкеда (в обычных боях пикают вслепую, врагов не видно): шанс на победу по статистике ранкеда всех рангов — сила бойца, его результаты против этих врагов и связки с этими союзниками. Вердикт — по месту вашего пика среди всех бойцов, которых можно было взять под этот состав. Оценка задним числом: при пике вы могли ещё не знать всех врагов, а лучшие варианты могли быть забанены.</p>`;
+  out.innerHTML=h;
+}
+// ---------- Окно «поверх игры» ----------
+// в узком окне — сначала состав и советы (нужны во время драфта), режим и карта ниже
+const PIP_IDS=["teamPanel","recPanel","modePanel","sheet","card"];
+let PIP_PH={};
+async function openPip(){
+  if(!("documentPictureInPicture" in window)){
+    $id("pipHint").textContent="Этот браузер так не умеет. Откройте сайт в Chrome или Edge — или закрепите окно браузера поверх игры: в Windows это делает PowerToys (Win+Ctrl+T).";
+    return;
+  }
+  if(PIP){PIP.focus();return}
+  let w;
+  try{w=await documentPictureInPicture.requestWindow({width:460,height:Math.max(520,Math.min(920,screen.availHeight-80))})}
+  catch(e){$id("pipHint").textContent="Не получилось открыть окно: "+esc(e.message||e);return}
+  // стили страницы — в новое окно
+  document.querySelectorAll("style,link[rel=stylesheet]").forEach(n=>w.document.head.appendChild(n.cloneNode(true)));
+  w.document.title="Драфт-подсказчик";
+  const wrap=w.document.createElement("div");wrap.className="wrap";w.document.body.appendChild(wrap);
+  PIP=w;PIP_PH={};
+  PIP_IDS.forEach(id=>{
+    const n=document.getElementById(id);if(!n)return;
+    const ph=document.createComment("pip:"+id);n.before(ph);PIP_PH[id]=ph;
+    (id==="sheet"||id==="card"?w.document.body:wrap).appendChild(n);
+  });
+  w.document.addEventListener("click",onDocClick);
+  w.document.addEventListener("keydown",onDocKey);
+  w.addEventListener("pagehide",closePip);
+  $id("pipNote").hidden=false;$id("pipHint").textContent="";
+  render();
+  setTimeout(()=>$id("quick")&&$id("quick").focus(),50);
+}
+function closePip(){
+  if(!PIP)return;
+  const w=PIP;
+  Object.entries(PIP_PH).forEach(([id,ph])=>{const n=w.document.getElementById(id);if(n)ph.replaceWith(n)});
+  PIP=null;PIP_PH={};
+  $id("pipNote").hidden=true;
+  render();
+}
+let cardName=null;
+function openCard(name){
+  const b=byName(name);if(!b)return;
+  cardName=name;
+  const a=statsOn()?b.an:null;
+  $id("cardTitle").innerHTML=`${dot(b.cls)} ${b.name} <span class="tier ${b.tier}">${b.tier}</span>`;
+  const li=(arr,fmt)=>arr&&arr.length?`<ul>${arr.map(fmt).join("")}</ul>`:`<p class="small" style="margin:0">Явных случаев нет.</p>`;
+  let h=`<p class="small" style="margin:0">${CLASSES[b.cls][0]}${b.games?` · ${pct(b.wr*100)}% побед · ${nMatches(b.games)} на Легенде+`:""}${a?` · есть в ${pct(a.pick)}% матчей`:""}${b.avgRank&&STATS&&STATS.avgRank?` · средний ранг игроков ${rankName(b.avgRank)} (${Math.abs(b.avgRank-STATS.avgRank)<.05?"как в среднем":sign(b.avgRank-STATS.avgRank)+" к среднему"}${a&&a.rankN<300?`, пока по ${nMatches(a.rankN)}`:""})`:""}</p>`;
+  if(a){
+    if(a.flags.length)h+=`<div>${a.flags.slice().sort((x,y)=>FLAG_ORDER.indexOf(x)-FLAG_ORDER.indexOf(y)).map(k=>`<div class="fl"><b>${FLAGS[k][0]}</b>${FLAGS[k][2]}</div>`).join("")}</div>`;
+    if(Math.abs(b.wr-a.wrAdj)>=.01)h+=`<p class="small" style="margin:0">Если бы соперники были обычными, а не те, под которых его берут, винрейт был бы ${pct(a.wrAdj*100)}%.</p>`;
+    h+=`<div class="two"><div><h3>Брать, когда во врагах</h3>${li(a.good,x=>`<li>${ruB(x[0])} — ${pct(x[1])}% побед <span class="num">(${sign(x[3])} к ожидаемому, ${nMatches(x[2])})</span></li>`)}</div>
+      <div><h3>Не брать, когда во врагах</h3>${li(a.bad,x=>`<li>${ruB(x[0])} — ${pct(x[1])}% побед <span class="num">(${sign(x[3])} к ожидаемому, ${nMatches(x[2])})</span></li>`)}</div></div>
+      <div class="two"><div><h3>Сильнее на картах</h3>${li(a.mapsGood,x=>`<li>${esc(ruMap(x[0],x[1]))} <span class="num">(${MODE_SHORT[x[1]]})</span> — ${pct(x[2])}% <span class="num">(${sign(x[4])})</span></li>`)}</div>
+      <div><h3>Слабее на картах</h3>${li(a.mapsBad,x=>`<li>${esc(ruMap(x[0],x[1]))} <span class="num">(${MODE_SHORT[x[1]]})</span> — ${pct(x[2])}% <span class="num">(${sign(x[4])})</span></li>`)}</div></div>`;
+    if(a.modesGood.length||a.modesBad.length)h+=`<p class="small" style="margin:0">${a.modesGood.length?"Лучше режимы: "+a.modesGood.map(x=>`${MODES[x[0]]} ${pct(x[1])}%`).join(", ")+". ":""}${a.modesBad.length?"Хуже: "+a.modesBad.map(x=>`${MODES[x[0]]} ${pct(x[1])}%`).join(", ")+".":""}</p>`;
+    const mates=Object.keys(WITH[b.en]||{}).map(e=>{const y=byEn(e);const d=y&&duoSyn(b,y);return d&&{y,...d}}).filter(Boolean);
+    const goodM=mates.filter(x=>x.syn>=2).sort((p,q)=>q.syn-p.syn).slice(0,5);
+    const badM=mates.filter(x=>x.syn<=-2).sort((p,q)=>p.syn-q.syn).slice(0,4);
+    const tr=Object.keys(TRIOS).filter(k=>k.split("|").includes(b.en)).map(k=>{const L=k.split("|").map(byEn);if(L.some(v=>!v))return null;const t=trioSyn(...L);return t&&{L,...t}}).filter(x=>x&&x.syn>=2).sort((p,q)=>q.syn-p.syn).slice(0,3);
+    if(goodM.length||badM.length||tr.length)h+=`<div class="two"><div><h3>Лучшие напарники</h3>${li(goodM,x=>`<li>${x.y.name} — ${pct(x.wr)}% побед вместе <span class="num">(${sign(x.syn)} к ожидаемому, ${nMatches(x.g)})</span></li>`)}</div>
+      <div><h3>Плохо сочетается с</h3>${li(badM,x=>`<li>${x.y.name} — ${pct(x.wr)}% <span class="num">(${sign(x.syn)}, ${nMatches(x.g)})</span></li>`)}</div></div>`+
+      (tr.length?`<div><h3>Лучшие тройки с ним</h3>${li(tr,x=>`<li>${x.L.map(v=>v.name).join(" + ")} — ${pct(x.wr)}% <span class="num">(${sign(x.syn)}, ${nMatches(x.g)})</span></li>`)}</div>`:"");
+    h+=`<p class="small" style="margin:0">«К ожидаемому» — насколько результат пары или тройки лучше или хуже, чем следует из общей силы каждого бойца. Так видно настоящие контрпики и связки, а не просто сильных бойцов.</p>`;
+  }else{
+    const by=b.by.map(ruB);
+    h+=`<p style="margin:0">Свежей статистики по этому бойцу пока мало — показываю встроенную базу.</p>
+      <div><h3>Его контрят</h3>${li(by,x=>`<li>${x}</li>`)}</div>
+      <p class="small" style="margin:0">Режимы: ${b.modes.split("").filter(m=>MODES[m]).map(m=>MODES[m]).join(", ")||"—"}.</p>`;
+  }
+  const u=used().has(b.name);
+  const free=[["ally","В наш пик"],["enemy","Пик врага"],["bans","В бан"]].filter(([t])=>S[t].some(v=>!v));
+  h+=`<div class="row" style="justify-content:flex-start">${u?`<span class="small">Уже в драфте.</span>`:
+    free.length?free.map(([t,l],i)=>`<button class="btn${i?"":" primary"}" data-cardpick="${t}">${l}</button>`).join(""):`<span class="small">Все слоты драфта заполнены.</span>`}</div>`;
+  $id("cardBody").innerHTML=h;
+  $id("card").hidden=false;
+  $id("closeCard").focus();
+}
+function closeCard(){$id("card").hidden=true;cardName=null}
+const rankName=r=>{const x=Math.round(r);if(x>=22)return"Про";const n=["Бронза","Серебро","Золото","Алмаз","Мифик","Легенда","Мастер"][Math.floor((x-1)/3)];return n+" "+"I".repeat((x-1)%3+1)};
+
+// Поиск: по началу имени или любого слова в нём (рус. и англ.), ё = е; если набрано в английской раскладке — пробуем русскую
+const LAT="qwertyuiop[]asdfghjkl;'zxcvbnm,.`",CYR="йцукенгшщзхъфывапролджэячсмитьбюё";
+const norm=x=>x.toLowerCase().replace(/ё/g,"е");
+const fixLayout=q=>q.split("").map(c=>{const i=LAT.indexOf(c);return i>-1?CYR[i]:c}).join("");
+function rankBy(q){
+  return DB.map(b=>{
+    const n=norm(b.name),a=norm(b.alt),words=a.split(/[\s\/\-.&,]+/).filter(Boolean);
+    let r=0;
+    if(n.startsWith(q))r=4;else if(norm(b.en).startsWith(q))r=3;else if(words.some(w=>w.startsWith(q)))r=2;else if(q.length>=3&&a.includes(q))r=1;
+    return{b,r};
+  }).filter(x=>x.r).sort((x,y)=>y.r-x.r||TIER_PTS[y.b.tier]-TIER_PTS[x.b.tier]||x.b.name.localeCompare(y.b.name,"ru")).map(x=>x.b);
+}
+function findBrawlers(raw){
+  const q=norm(raw.trim());
+  if(!q)return DB.slice().sort((a,c)=>a.name.localeCompare(c.name,"ru"));
+  let r=rankBy(q);
+  if(!r.length&&/[a-z\[\];',.`]/.test(q))r=rankBy(norm(fixLayout(q)));
+  return r;
+}
+
+// Все расстановки идут через place(), чтобы работала отмена
+const HIST=[];
+function place(team,i,name){
+  if(i<0||!name)return false;
+  HIST.push({team,i,prev:S[team][i]});if(HIST.length>50)HIST.shift();
+  S[team][i]=name;return true;
+}
+function undo(){
+  const h=HIST.pop();if(!h)return;
+  S[h.team][h.i]=h.prev;render();
+}
+let qSel=0;
+
+// Быстрый ввод: куда ставить
+function autoTarget(){
+  const picks=S.ally.filter(Boolean).length+S.enemy.filter(Boolean).length;
+  if(picks===0&&S.bans.some(v=>!v))return"bans";
+  const nx=nextStep();return nx?nx.team:null;
+}
+function quickTarget(){const t=S.qt&&S.qt!=="auto"?S.qt:autoTarget();return t&&S[t].some(v=>!v)?t:null}
+const QT_NAMES={auto:"Авто",bans:"Бан",ally:"Мы",enemy:"Враги"};
+function renderQuick(){
+  const qt=S.qt||"auto";
+  $id("qtChips").innerHTML=Object.entries(QT_NAMES).map(([k,v])=>`<button class="chip" data-qt="${k}" aria-pressed="${qt===k}">${v}</button>`).join("");
+  const t=quickTarget();
+  $id("qtInfo").textContent=t?"→ "+(t==="bans"?"бан":t==="ally"?"наш пик":"пик врага"):"→ слоты заполнены";
+  const q=$id("quick").value;
+  const u=used();
+  const res=q.trim()?findBrawlers(q).filter(b=>!u.has(b.name)).slice(0,6):[];
+  if(qSel>=res.length)qSel=Math.max(0,res.length-1);
+  $id("quickRes").innerHTML=q.trim()?res
+    .map((b,i)=>`<button class="pick ${i===qSel?"sel":""}" data-quick="${b.name}">${dot(b.cls)}<span class="nm">${b.name}</span></button>`).join("")||`<p class="small" style="grid-column:1/-1;margin:0">Никого не нашлось.</p>`:"";
+}
+function quickPick(name){
+  const t=quickTarget();if(!t||!name)return;
+  place(t,S[t].findIndex(v=>!v),name);
+  const qi=$id("quick");qi.value="";qSel=0;render();
+  if(!matchMedia("(hover:none)").matches||act()===qi)qi.focus();
+}
+
+let target=null;
+function openPicker(team,i){
+  target={team,i};
+  $id("sheetTitle").textContent=team==="bans"?"Бан":team==="ally"?"Наш пик":"Пик врага";
+  $id("search").value="";
+  $id("sheet").hidden=false;
+  drawGrid();
+  setTimeout(()=>$id("search").focus(),50);
+}
+function drawGrid(){
+  const q=$id("search").value;
+  const u=used();
+  $id("grid").innerHTML=findBrawlers(q)
+    .map(b=>`<button class="pick" data-pick="${b.name}" ${u.has(b.name)?"disabled":""}>${dot(b.cls)}<span class="nm">${b.name}</span><span class="tier ${b.tier}">${b.tier}</span></button>`).join("");
+}
+function closePicker(){$id("sheet").hidden=true;target=null}
+
+function onDocClick(e){
+  const t=e.target;
+  const clr=t.closest("[data-clear]");
+  if(clr){const[team,i]=clr.dataset.clear.split(":");HIST.push({team,i:+i,prev:S[team][+i]});S[team][+i]=null;render();e.stopPropagation();return}
+  const m=t.closest("[data-mode]");if(m){if(S.mode!==m.dataset.mode)S.map=null;S.mode=m.dataset.mode;render();return}
+  const mp=t.closest("[data-map]");if(mp){S.map=mp.dataset.map||null;render();return}
+  const sl=t.closest(".slot");if(sl&&sl.dataset.team){openPicker(sl.dataset.team,+sl.dataset.i);return}
+  const p=t.closest("[data-pick]");if(p&&target){place(target.team,target.i,p.dataset.pick);closePicker();render();return}
+  const cp=t.closest("[data-cardpick]");
+  if(cp&&cardName){const team=cp.dataset.cardpick;if(place(team,S[team].findIndex(v=>!v),cardName)){closeCard();render()}return}
+  const cd=t.closest("[data-card]");if(cd){openCard(cd.dataset.card);return}
+  const af=t.closest("[data-anomf]");if(af){S.anomF=af.dataset.anomf;render();return}
+  const stb=t.closest("[data-syntab]");if(stb){S.synTab=stb.dataset.syntab;render();return}
+  const prq=t.closest("[data-plreq]");
+  if(prq){try{const o=plRequests();o[prq.dataset.plreq]=Date.now();localStorage.setItem("bsdraft_req",JSON.stringify(o))}catch(e){}
+    setTimeout(()=>loadPlayer(prq.dataset.plreq),300);return} // ссылка откроется в новой вкладке сама
+  const prt=t.closest("[data-plretry]");if(prt){loadPlayer(prt.dataset.plretry);return}
+  const plf=t.closest("[data-plf]");if(plf){S.plF=plf.dataset.plf;save();renderPlayer();return}
+  const qk=t.closest("[data-quick]");if(qk){quickPick(qk.dataset.quick);return}
+  const qb=t.closest("[data-qt]");if(qb){S.qt=qb.dataset.qt;render();$id("quick").focus();return}
+  const r=t.closest("[data-rec]");
+  if(r){
+    applyRec(r.dataset.kind,r.dataset.rec);return}
+}
+document.addEventListener("click",onDocClick);
+function applyRec(kind,name){
+  if(kind==="ban")place("bans",S.bans.findIndex(v=>!v),name);
+  else place("ally",S.ally.findIndex(v=>!v),name);
+  render();
+}
+const isField=el=>el&&(el.tagName==="INPUT"||el.tagName==="TEXTAREA"||el.isContentEditable);
+function onDocKey(e){
+  if(!$id("card").hidden){if(e.key==="Escape")closeCard();return}
+  const sheetOpen=!$id("sheet").hidden;
+  const qi=$id("quick");
+  if(e.key==="Escape"){
+    if(sheetOpen){closePicker();return}
+    if(act()===qi&&qi.value){qi.value="";qSel=0;renderQuick();e.preventDefault();return}
+    return;
+  }
+  if((e.key==="Enter"||e.key===" ")&&e.target.classList.contains("slot")){e.preventDefault();openPicker(e.target.dataset.team,+e.target.dataset.i);return}
+  if(sheetOpen)return;
+  // Alt+цифра — взять совет, Alt+Shift+цифра — забанить совет
+  // (в полях ввода, кроме быстрого ввода, Alt/Option+цифра печатает символы — не перехватываем)
+  const dm=/^(Digit|Numpad)([1-8])$/.exec(e.code);
+  if(e.altKey&&!e.ctrlKey&&!e.metaKey&&dm&&(!isField(act())||act()===qi)){
+    e.preventDefault();const kind=e.shiftKey?"ban":"pick";const r=REC[kind][+dm[2]-1];
+    if(r)applyRec(kind,r.b.name);return;
+  }
+  if(e.key==="F2"){e.preventDefault();const ks=Object.keys(QT_NAMES);S.qt=ks[(ks.indexOf(S.qt||"auto")+1)%ks.length];render();return}
+  if((e.ctrlKey||e.metaKey)&&!e.shiftKey&&(e.key==="z"||e.key==="я"||e.code==="KeyZ")&&!isField(act())){e.preventDefault();undo();return}
+  if((e.ctrlKey||e.metaKey)&&(e.code==="KeyZ")&&act()===qi&&!qi.value){e.preventDefault();undo();return}
+  // Начали печатать вне полей — переводим в быстрый ввод
+  if(!isField(act())&&e.key.length===1&&!e.ctrlKey&&!e.metaKey&&!e.altKey&&e.key!==" "){
+    e.preventDefault();qi.focus();qi.value+=e.key;qSel=0;renderQuick();
+  }
+}
+document.addEventListener("keydown",onDocKey);
+$id("sheet").addEventListener("click",e=>{if(e.target.id==="sheet")closePicker()});
+$id("closeSheet").onclick=closePicker;
+$id("closeCard").onclick=closeCard;
+$id("pipBtn").onclick=openPip;
+$id("pipBack").onclick=()=>{if(PIP)PIP.close()};
+// кнопка — только на ПК (на телефоне окна поверх игры не бывает)
+if(!matchMedia("(hover:none)").matches)$id("pipRow").hidden=false;
+document.addEventListener("visibilitychange",()=>{
+  if(document.visibilityState!=="visible"||PLAYER)return;
+  const t=normTag($id("plTag").value),req=plRequests()[t];
+  if(t&&req&&Date.now()-req<2*36e5)loadPlayer(t);
+});
+$id("plForm").addEventListener("submit",e=>{e.preventDefault();loadPlayer($id("plTag").value)});
+$id("card").addEventListener("click",e=>{if(e.target.id==="card")closeCard()});
+$id("search").addEventListener("input",drawGrid);
+$id("search").addEventListener("keydown",e=>{
+  if(e.key!=="Enter"||!target)return;e.preventDefault();
+  const u=used();const f=findBrawlers(e.target.value).find(b=>!u.has(b.name));
+  if(f){place(target.team,target.i,f.name);closePicker();render()}
+});
+$id("quick").addEventListener("input",()=>{qSel=0;renderQuick()});
+$id("quick").addEventListener("keydown",e=>{
+  const items=[...$id("quickRes").querySelectorAll("[data-quick]")];
+  if(!items.length)return;
+  const qr=$id("quickRes"),cols=qr.ownerDocument.defaultView.getComputedStyle(qr).gridTemplateColumns.split(" ").length||3;
+  const mv={ArrowRight:1,ArrowLeft:-1,ArrowDown:cols,ArrowUp:-cols}[e.key];
+  if(mv!==undefined){
+    if((e.key==="ArrowLeft"||e.key==="ArrowRight")&&e.target.selectionStart!==e.target.value.length)return;
+    e.preventDefault();qSel=Math.min(items.length-1,Math.max(0,qSel+mv));renderQuick();return;
+  }
+  if(e.key==="Enter"){e.preventDefault();const it=items[qSel]||items[0];quickPick(it.dataset.quick)}
+});
+$id("firstBtn").onclick=()=>{S.first=!S.first;render()};
+$id("resetBtn").onclick=()=>{S.ally=[null,null,null];S.enemy=[null,null,null];S.bans=[null,null,null,null,null,null];HIST.length=0;render()};
+$id("undoBtn").onclick=undo;
+$id("tabPick").onclick=()=>{S.tab="pick";render()};
+$id("tabBan").onclick=()=>{S.tab="ban";render()};
+// Сохранение и сброс баз идут через rebuild(): он заодно убирает из слотов бравлеров, которых больше нет в базе
+$id("saveDb").onclick=()=>{
+  try{localStorage.setItem("bsdraft_db2",$id("dbText").value)}catch(e){}
+  rebuild();
+  $id("dbMsg").textContent=`Сохранено: ${DB.length} ${plural(DB.length,["бравлер","бравлера","бравлеров"])}.`;
+};
+$id("restoreDb").onclick=()=>{
+  try{localStorage.removeItem("bsdraft_db2")}catch(e){}
+  $id("dbText").value=DEFAULT_DB;rebuild();
+  $id("dbMsg").textContent="Стандартная база восстановлена.";
+};
+
+$id("saveMaps").onclick=()=>{
+  try{localStorage.setItem("bsdraft_maps1",$id("mapText").value)}catch(e){}
+  rebuild();
+  $id("mapMsg").textContent=`Сохранено: ${MAPS.length} ${plural(MAPS.length,["карта","карты","карт"])}.`;
+};
+$id("restoreMaps").onclick=()=>{
+  try{localStorage.removeItem("bsdraft_maps1")}catch(e){}
+  $id("mapText").value=DEFAULT_MAPS;rebuild();
+  $id("mapMsg").textContent="Стандартный список карт восстановлен.";
+};
+
+// Разделы-«вкладки» (details): запоминаем, какие открыты
+try{const o=JSON.parse(localStorage.getItem("bsdraft_open")||"{}");document.querySelectorAll("details[id]").forEach(d=>{if(o[d.id])d.open=true})}catch(e){}
+document.querySelectorAll("details[id]").forEach(d=>d.addEventListener("toggle",()=>{
+  try{const o=JSON.parse(localStorage.getItem("bsdraft_open")||"{}");o[d.id]=d.open;localStorage.setItem("bsdraft_open",JSON.stringify(o))}catch(e){}
+}));
+try{STATS=JSON.parse(localStorage.getItem("bsdraft_stats")||"null")}catch(e){}
+loadDB();
+loadMaps();
+if(!curMap())S.map=null;
+// Убираем из состояния бравлеров, которых нет в базе (например, из старой версии)
+["ally","enemy","bans"].forEach(k=>{S[k]=S[k].map(v=>v&&byName(v)?v:null)});
+// Пример для первого открытия: враги взяли Шейда, баны — Эдгар и Амбер
+let seen=false;try{seen=!!localStorage.getItem("bsdraft_seen2")}catch(e){}
+if(!seen){
+  try{localStorage.setItem("bsdraft_seen2","1")}catch(e){}
+  S.ally=[null,null,null];S.enemy=["Шейд",null,null];S.bans=["Эдгар","Амбер",null,null,null,null];S.first=false;S.mode="B";
+}
+render();
+statsLine();
+loadStats();
+try{const t=localStorage.getItem("bsdraft_tag");if(t){$id("plTag").value="#"+t;loadPlayer(t)}}catch(e){}
+</script>
+</body>
+</html>
